@@ -1,0 +1,1820 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Game Paradise - Paper.io Pixel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="/icon/favicon.png">
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { overflow: hidden; font-family: 'Nunito', sans-serif; }
+        canvas { display: block; background: #1a1a2e; }
+        
+        #ui-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center;
+            color: white; 
+            z-index: 10;
+            overflow: hidden;
+        }
+
+        #ui-overlay.theme-original { background: #2e3331; }
+        #bg-animation { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0.3; z-index: 0; pointer-events: none; }
+        
+        .menu-content { position: relative; z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+        
+        .game-title { font-family: 'Russo One', sans-serif; font-size: 72px; color: white; text-shadow: 4px 4px 0px #e74c3c, 8px 8px 0px rgba(0,0,0,0.2); letter-spacing: 4px; animation: titleBounce 2s ease-in-out infinite; }
+        .game-title span { color: #ffd32a; }
+        .game-logo { display: none; max-width: 350px; height: auto; animation: titleBounce 2s ease-in-out infinite; }
+        .theme-original .game-title { display: none; }
+        .theme-original .game-logo { display: block; }
+        .theme-original .subtitle { display: none; }
+        
+        @keyframes titleBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+        .subtitle { font-size: 18px; color: rgba(255,255,255,0.8); margin-top: -10px; letter-spacing: 8px; text-transform: uppercase; }
+        
+        #player-name { width: 280px; padding: 18px 25px; font-size: 20px; font-family: 'Nunito', sans-serif; font-weight: 700; border: none; border-radius: 50px; background: white; color: #333; text-align: center; outline: none; box-shadow: 0 8px 25px rgba(0,0,0,0.2); }
+        
+        .button-row { display: flex; gap: 15px; align-items: center; }
+        
+        #start-btn { padding: 20px 80px; font-size: 28px; font-family: 'Nunito', sans-serif; font-weight: 900; cursor: pointer; background: linear-gradient(180deg, #00d2d3 0%, #0abf9a 100%); color: white; border: none; border-radius: 50px; box-shadow: 0 8px 0 #099c7d, 0 15px 30px rgba(0,0,0,0.3); transition: all 0.1s; text-transform: uppercase; letter-spacing: 3px; }
+        #start-btn:hover { transform: translateY(-3px); }
+        #start-btn:active { transform: translateY(4px); }
+
+        #settings-btn { width: 60px; height: 60px; cursor: pointer; background: rgba(255,255,255,0.2); border: none; border-radius: 50%; transition: all 0.2s; display: flex; align-items: center; justify-content: center; padding: 12px; }
+        #settings-btn img { width: 100%; height: 100%; object-fit: contain; filter: brightness(0) invert(1); }
+        #settings-btn:hover { background: rgba(255,255,255,0.3); transform: rotate(45deg); }
+
+        /* Admin Button */
+        #admin-panel-btn {
+            display: none; /* Hidden by default */
+            position: absolute; top: 20px; left: 20px;
+            background: #e74c3c; color: white; border: none; padding: 10px 20px;
+            border-radius: 8px; font-weight: 900; cursor: pointer; z-index: 100;
+            box-shadow: 0 4px 0 #c0392b;
+        }
+        #admin-panel-btn:hover { transform: translateY(-2px); }
+
+        .stats-container { display: flex; gap: 30px; margin-top: 20px; }
+        .stat-box { background: rgba(255,255,255,0.15); padding: 15px 30px; border-radius: 15px; text-align: center; }
+        .stat-box .value { font-size: 28px; font-weight: 900; color: #ffd32a; }
+        .stat-box .label { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.8; }
+
+        /* Settings & Admin Panels */
+        #settings-panel, #admin-overlay {
+            display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: linear-gradient(180deg, #2d2d44 0%, #1a1a2e 100%);
+            padding: 0; border-radius: 20px; z-index: 100; min-width: 400px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5); overflow: hidden;
+        }
+        
+        /* Admin Specifics */
+        #admin-overlay { width: 600px; max-height: 85vh; overflow-y: auto; }
+        .admin-nav { display: flex; background: rgba(0,0,0,0.2); }
+        .admin-nav-btn { flex: 1; padding: 15px; background: none; border: none; color: rgba(255,255,255,0.5); font-weight: 800; cursor: pointer; border-bottom: 3px solid transparent; }
+        .admin-nav-btn.active { color: white; background: rgba(255,255,255,0.05); border-bottom-color: #e74c3c; }
+        
+        .admin-content-tab { display: none; padding: 20px; }
+        .admin-content-tab.active { display: block; }
+        
+        .admin-h2 { font-size: 20px; color: #e74c3c; margin-bottom: 15px; font-weight: 800; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 12px; margin-bottom: 5px; color: rgba(255,255,255,0.6); }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+            color: white; border-radius: 8px; font-family: 'Nunito', sans-serif;
+        }
+        .admin-action-btn {
+            width: 100%; padding: 12px; background: #2ed573; color: white; border: none; border-radius: 8px;
+            font-weight: 800; cursor: pointer; margin-top: 10px;
+        }
+        .admin-delete-btn {
+            background: #ff4757; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 700;
+        }
+        .admin-list-item {
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(255,255,255,0.05); padding: 10px; margin-bottom: 8px; border-radius: 6px;
+        }
+        .admin-close { position: absolute; top: 15px; right: 15px; background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
+
+        .settings-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px 30px; display: flex; align-items: center; gap: 15px; }
+        .settings-header img { width: 32px; height: 32px; filter: brightness(0) invert(1); }
+        .settings-header h2 { margin: 0; font-size: 24px; color: white; }
+        .settings-tabs { display: flex; background: rgba(0,0,0,0.3); padding: 0; }
+        .settings-tab { flex: 1; padding: 15px 20px; background: transparent; border: none; color: rgba(255,255,255,0.5); font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px; border-bottom: 3px solid transparent; }
+        .settings-tab:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.05); }
+        .settings-tab.active { color: #00d2d3; border-bottom-color: #00d2d3; background: rgba(0,208,211,0.1); }
+        .settings-content { padding: 25px 30px; min-height: 280px; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        .setting-row { display: flex; justify-content: space-between; align-items: center; margin: 18px 0; color: white; }
+        .setting-row label { font-size: 15px; font-weight: 700; }
+        .setting-row input[type="range"] { width: 100px; cursor: pointer; accent-color: #00d2d3; }
+        .setting-row .value-display { min-width: 40px; text-align: right; color: #00d2d3; font-weight: 900; }
+        .setting-row select { padding: 8px 15px; border-radius: 10px; border: none; font-family: 'Nunito', sans-serif; font-weight: 700; cursor: pointer; background: rgba(255,255,255,0.9); }
+        
+        .theme-section { margin-bottom: 20px; }
+        .theme-section-title { color: rgba(255,255,255,0.6); font-size: 12px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 12px; }
+        
+        .screen-theme-options { display: flex; gap: 15px; margin-top: 10px; }
+        .screen-theme-btn { flex: 1; padding: 15px; border-radius: 12px; border: 3px solid transparent; cursor: pointer; transition: all 0.2s; text-align: center; position: relative; overflow: hidden; }
+        .screen-theme-btn:hover { transform: scale(1.02); }
+        .screen-theme-btn.selected { border-color: #00d2d3; box-shadow: 0 0 20px rgba(0,208,211,0.4); }
+        .screen-theme-btn .theme-preview { width: 100%; height: 60px; border-radius: 8px; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; }
+        .screen-theme-btn.theme-standard .theme-preview { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .screen-theme-btn.theme-original .theme-preview { background: #2e3331; }
+        .screen-theme-btn .theme-preview-text { font-family: 'Russo One', sans-serif; font-size: 14px; color: white; text-shadow: 1px 1px 0px #e74c3c; }
+        .screen-theme-btn .theme-preview-text span { color: #ffd32a; }
+        .screen-theme-btn .theme-preview img { max-height: 40px; width: auto; }
+        .screen-theme-btn .theme-name { color: white; font-size: 14px; font-weight: 700; }
+        
+        .account-section { text-align: center; padding: 20px 0; }
+        .account-avatar { width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; font-size: 36px; color: white; font-weight: 900; }
+        .account-name { color: white; font-size: 20px; font-weight: 900; margin-bottom: 5px; }
+        .account-stats { color: rgba(255,255,255,0.6); font-size: 14px; margin-bottom: 20px; }
+        .account-btn { padding: 10px 25px; margin: 5px; font-size: 14px; font-family: 'Nunito', sans-serif; font-weight: 700; cursor: pointer; border: none; border-radius: 20px; transition: all 0.2s; }
+        .account-btn.primary { background: linear-gradient(180deg, #00d2d3 0%, #0abf9a 100%); color: white; }
+        .account-btn.secondary { background: rgba(255,255,255,0.1); color: white; }
+        .account-btn:hover { transform: scale(1.05); }
+        .cloud-sync-info { margin-top: 15px; padding: 15px; background: rgba(0,208,211,0.1); border-radius: 12px; border: 1px solid rgba(0,208,211,0.3); text-align: left; }
+        .cloud-sync-info .sync-title { color: #00d2d3; font-size: 14px; font-weight: 700; margin-bottom: 5px; }
+        .cloud-sync-info .sync-detail { color: rgba(255,255,255,0.7); font-size: 11px; line-height: 1.6; }
+        
+        #close-settings { display: block; width: calc(100% - 60px); padding: 15px; margin: 0 30px 25px; font-size: 16px; font-family: 'Nunito', sans-serif; font-weight: 900; cursor: pointer; background: linear-gradient(180deg, #00d2d3 0%, #0abf9a 100%); color: white; border: none; border-radius: 30px; transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px; }
+        #close-settings:hover { transform: scale(1.02); box-shadow: 0 5px 20px rgba(0,208,211,0.4); }
+        
+        #settings-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 99; }
+        
+        #minimap { position: absolute; bottom: 20px; right: 20px; border-radius: 50%; border: 4px solid rgba(255,255,255,0.8); box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 5; }
+        #score-display { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.5); color: white; padding: 10px 30px; border-radius: 25px; font-size: 24px; font-weight: 900; z-index: 5; display: none; }
+        #leaderboard { position: absolute; top: 80px; right: 20px; background: rgba(0,0,0,0.5); color: white; padding: 15px 20px; border-radius: 15px; font-size: 14px; z-index: 5; display: none; min-width: 150px; }
+        #leaderboard h3 { margin-bottom: 10px; font-size: 16px; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; }
+        .leaderboard-entry { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+        .leaderboard-color { width: 12px; height: 12px; border-radius: 3px; }
+        .leaderboard-name { flex: 1; }
+        .leaderboard-score { font-weight: bold; }
+        
+        #ingame-settings { position: absolute; top: 20px; right: 20px; width: 50px; height: 50px; font-size: 24px; cursor: pointer; background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; z-index: 6; display: none; transition: all 0.2s; }
+        #ingame-settings:hover { background: rgba(0,0,0,0.7); transform: rotate(45deg); }
+        
+        #pause-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 50; flex-direction: column; align-items: center; justify-content: center; color: white; }
+        #pause-overlay h2 { font-size: 48px; margin-bottom: 30px; }
+        #pause-overlay button { padding: 15px 50px; margin: 10px; font-size: 20px; font-family: 'Nunito', sans-serif; font-weight: 900; cursor: pointer; border: none; border-radius: 30px; transition: all 0.2s; }
+        #resume-btn { background: linear-gradient(180deg, #00d2d3 0%, #0abf9a 100%); color: white; }
+        #quit-btn { background: rgba(255,255,255,0.2); color: white; }
+        #resume-btn:hover, #quit-btn:hover { transform: scale(1.05); }
+
+        .skins-btn { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 15px 35px; font-size: 18px; font-family: 'Nunito', sans-serif; font-weight: 900; cursor: pointer; background: linear-gradient(180deg, #ff6b6b 0%, #ee5a5a 100%); color: white; border: none; border-radius: 50px; box-shadow: 0 6px 0 #c74444, 0 10px 20px rgba(0,0,0,0.2); transition: all 0.1s; text-transform: uppercase; letter-spacing: 2px; margin-top: 15px; }
+        .skins-btn img { width: 24px; height: 24px; filter: brightness(0) invert(1); }
+        .skins-btn:hover { transform: translateY(-3px); box-shadow: 0 9px 0 #c74444, 0 15px 25px rgba(0,0,0,0.25); }
+        .skins-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 #c74444, 0 5px 10px rgba(0,0,0,0.2); }
+        
+        #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; color: white; }
+        .loading-spinner { width: 50px; height: 50px; border: 4px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { font-size: 18px; font-weight: 700; }
+        #loading-details { margin-top: 10px; font-size: 12px; opacity: 0.7; }
+        
+        #notification-area { position: fixed; top: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 1000; pointer-events: none; }
+        .notification-toast { background: rgba(0, 0, 0, 0.9); color: white; padding: 15px 20px; border-radius: 12px; border-left: 5px solid #00d2d3; font-family: 'Nunito', sans-serif; font-weight: 700; box-shadow: 0 5px 20px rgba(0,0,0,0.5); animation: slideIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards, fadeOut 0.5s 3s forwards; display: flex; align-items: center; gap: 15px; min-width: 250px; backdrop-filter: blur(5px); }
+        .notification-icon { font-size: 30px; background: rgba(255,255,255,0.1); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .notification-content { display: flex; flex-direction: column; }
+        .notification-title { font-size: 11px; color: #00d2d3; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+        .notification-message { font-size: 16px; color: white; font-weight: 900; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-20px); } }
+        
+        #skins-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(26, 26, 46, 0.98); z-index: 200; flex-direction: column; align-items: center; justify-content: center; }
+        .skins-header { width: 90%; max-width: 1100px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .skins-title { font-size: 36px; font-family: 'Russo One', sans-serif; color: white; text-transform: uppercase; letter-spacing: 2px; }
+        .close-skins-btn { background: #ff4757; color: white; border: none; padding: 10px 25px; border-radius: 30px; font-weight: 900; cursor: pointer; transition: transform 0.2s; }
+        .close-skins-btn:hover { transform: scale(1.05); }
+        .skins-layout { width: 90%; max-width: 1100px; height: 75%; display: flex; gap: 25px; }
+        .skins-main { flex: 2; background: rgba(255,255,255,0.05); border-radius: 20px; padding: 25px; display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,0.1); }
+        .skins-filter-bar { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; }
+        .filter-btn { background: rgba(255,255,255,0.1); border: none; color: rgba(255,255,255,0.6); padding: 10px 20px; border-radius: 25px; cursor: pointer; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 14px; transition: all 0.2s; text-transform: uppercase; }
+        .filter-btn:hover { background: rgba(255,255,255,0.2); color: white; }
+        .filter-btn.active { background: #00d2d3; color: white; box-shadow: 0 4px 15px rgba(0,210,211,0.3); }
+        .skins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 15px; overflow-y: auto; padding-right: 10px; align-content: start; }
+        .skin-card { background: rgba(255,255,255,0.1); border-radius: 15px; padding: 15px; display: flex; flex-direction: column; align-items: center; cursor: pointer; transition: all 0.2s; position: relative; border: 3px solid transparent; }
+        .skin-card:hover { transform: translateY(-3px); background: rgba(255,255,255,0.15); }
+        .skin-card.selected { border-color: #00d2d3; background: rgba(0,210,211,0.1); box-shadow: 0 0 15px rgba(0,210,211,0.2); }
+        .skin-card.locked { opacity: 0.5; filter: grayscale(0.5); }
+        .skin-preview { width: 60px; height: 60px; border-radius: 12px; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; font-size: 28px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); overflow: hidden; }
+        .skin-preview img { width: 100%; height: 100%; object-fit: cover; }
+        .skin-name { font-size: 12px; font-weight: 700; color: white; text-align: center; line-height: 1.2; }
+        .lock-icon { position: absolute; top: 8px; right: 8px; width: 14px; height: 14px; filter: brightness(0) invert(1); opacity: 0.7; }
+        
+        .skins-sidebar { flex: 1; background: rgba(0,0,0,0.4); border-radius: 20px; padding: 25px; display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,0.1); }
+        .missions-title { font-family: 'Russo One', sans-serif; color: white; font-size: 18px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 10px; padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .missions-list { overflow-y: auto; padding-right: 10px; flex: 1; }
+        .mission-item { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 12px 15px; margin-bottom: 12px; border-left: 4px solid #7f8c8d; transition: all 0.2s; }
+        .mission-item:hover { background: rgba(255,255,255,0.08); transform: translateX(3px); }
+        .mission-item.completed { border-left-color: #2ed573; opacity: 0.8; }
+        .mission-item.locked { border-left-color: #ff4757; }
+        .mission-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .mission-name { font-weight: 800; color: white; font-size: 13px; }
+        .mission-status { font-size: 10px; font-weight: 900; padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,0.3); text-transform: uppercase; }
+        .mission-item.completed .mission-status { color: #2ed573; background: rgba(46, 213, 115, 0.1); }
+        .mission-item.locked .mission-status { color: #ff4757; background: rgba(255, 71, 87, 0.1); }
+        .mission-req { color: #ffd32a; font-size: 12px; margin-bottom: 8px; font-weight: 600; }
+        .mission-difficulty { display: flex; align-items: center; gap: 6px; }
+        .diff-label { font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; }
+        .diff-dots { display: flex; gap: 3px; }
+        .diff-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.1); }
+        .diff-dot.active { background: #ff6b6b; }
+        
+        #daily-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 300; flex-direction: column; align-items: center; justify-content: center; }
+        .wheel-container { position: relative; width: 350px; height: 350px; margin-bottom: 30px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 50%; }
+        #wheel { width: 100%; height: 100%; border-radius: 50%; border: 8px solid white; position: relative; overflow: hidden; transition: transform 4s cubic-bezier(0.1, 0.9, 0.2, 1); background: conic-gradient(#ff4757 0deg 60deg, #2ed573 60deg 120deg, #1e90ff 120deg 180deg, #ffd32a 180deg 240deg, #a55eea 240deg 300deg, #ff6b6b 300deg 360deg); box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .wheel-section { position: absolute; top: 50%; left: 50%; width: 100%; height: 100%; transform-origin: 0 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 40px; box-sizing: border-box; font-weight: 900; color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); font-size: 18px; }
+        .wheel-pointer { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 20px solid transparent; border-right: 20px solid transparent; border-top: 40px solid white; z-index: 10; filter: drop-shadow(0 4px 4px rgba(0,0,0,0.3)); }
+        #spin-btn { padding: 15px 60px; font-size: 28px; font-weight: 900; font-family: 'Nunito', sans-serif; background: linear-gradient(180deg, #ffd32a 0%, #ffa502 100%); border: none; border-radius: 50px; color: white; cursor: pointer; box-shadow: 0 6px 0 #e67e22, 0 10px 20px rgba(0,0,0,0.3); text-transform: uppercase; transition: all 0.2s; }
+        #spin-btn:disabled { background: #95a5a6; box-shadow: 0 6px 0 #7f8c8d; cursor: not-allowed; transform: none; }
+        .daily-title { font-size: 56px; color: white; font-family: 'Russo One'; margin-bottom: 30px; text-shadow: 0 4px 0 #e67e22; letter-spacing: 2px; }
+        .daily-timer { color: rgba(255,255,255,0.7); font-size: 16px; margin-top: 15px; font-weight: 700; background: rgba(0,0,0,0.3); padding: 5px 15px; border-radius: 15px; }
+        #wheel-result { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); padding: 20px 40px; border-radius: 20px; text-align: center; display: none; z-index: 20; border: 2px solid #ffd32a; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes popIn { from { transform: translate(-50%, -50%) scale(0); } to { transform: translate(-50%, -50%) scale(1); } }
+        .reward-preview { font-size: 48px; margin: 10px 0; }
+        .reward-name { font-size: 24px; font-weight: 900; color: #ffd32a; }
+    </style>
+</head>
+<body>
+    <div id="notification-area"></div>
+    <div id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Connecting to cloud...</div>
+        <div id="loading-details"></div>
+    </div>
+
+    <div id="ui-overlay">
+        <canvas id="bg-animation"></canvas>
+        <button id="admin-panel-btn">ADMIN PANEL</button>
+        
+        <div class="menu-content">
+            <div class="game-title">PAPER<span>.IO</span></div>
+            <img class="game-logo" src="https://jappie716.github.io/games/paper-io-pixel/images/paperiopixellogo.png" alt="Paper.io Pixel">
+            <div class="subtitle">Conquer the map</div>
+            <input type="text" id="player-name" placeholder="Enter your name" maxlength="15">
+            <div class="button-row">
+                <button id="start-btn">Play!</button>
+                <button id="settings-btn">
+                    <img src="https://jappie716.github.io/games/paper-io-pixel/images/settings.png" alt="Settings">
+                </button>
+            </div>
+            <div class="stats-container">
+                <div class="stat-box">
+                    <div class="value" id="high-score">0%</div>
+                    <div class="label">Best Score</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="games-played">0</div>
+                    <div class="label">Games</div>
+                </div>
+            </div>
+            <button id="menu-skins-btn" class="skins-btn">
+                <img src="https://jappie716.github.io/games/paper-io-pixel/images/skins.png" alt="Skins">
+                <span>Skins</span>
+            </button>
+        </div>
+    </div>
+
+    <div id="settings-overlay"></div>
+    
+    <div id="admin-overlay">
+        <button class="admin-close" id="close-admin">×</button>
+        
+        <div class="admin-nav">
+            <button class="admin-nav-btn active" data-tab="create-skin">Create Skin</button>
+            <button class="admin-nav-btn" data-tab="create-mission">Create Mission</button>
+            <button class="admin-nav-btn" data-tab="manage-list">Manage All</button>
+        </div>
+
+        <div class="admin-content-tab active" id="admin-tab-create-skin">
+            <div class="admin-h2">Create New Skin</div>
+            <form id="admin-skin-form">
+                <div class="form-group">
+                    <label>Skin ID (unique, e.g., 'dragon_skin')</label>
+                    <input type="text" id="admin-skin-id" required placeholder="skin_unique_id">
+                </div>
+                <div class="form-group">
+                    <label>Display Name</label>
+                    <input type="text" id="admin-skin-name" required placeholder="Cool Dragon">
+                </div>
+                <div class="form-group">
+                    <label>Base Color</label>
+                    <input type="color" id="admin-skin-color" value="#ff0000" style="height:40px;">
+                </div>
+                <div class="form-group">
+                    <label>Visual Type</label>
+                    <select id="admin-skin-type">
+                        <option value="color">Simple Color</option>
+                        <option value="icon">Icon (Emoji)</option>
+                        <option value="image">Image (URL)</option>
+                    </select>
+                </div>
+                <div class="form-group" id="admin-icon-group" style="display:none;">
+                    <label>Icon (Emoji)</label>
+                    <input type="text" id="admin-skin-icon" placeholder="🐉">
+                </div>
+                <div class="form-group" id="admin-image-group" style="display:none;">
+                    <label>Image URL</label>
+                    <input type="url" id="admin-skin-image" placeholder="https://example.com/dragon.png">
+                </div>
+                <button type="submit" class="admin-action-btn">CREATE SKIN</button>
+            </form>
+        </div>
+
+        <div class="admin-content-tab" id="admin-tab-create-mission">
+            <div class="admin-h2">Create New Mission</div>
+            <form id="admin-mission-form">
+                <div class="form-group">
+                    <label>Mission ID (unique)</label>
+                    <input type="text" id="admin-mission-id" required placeholder="mission_kill_50">
+                </div>
+                <div class="form-group">
+                    <label>Mission Type</label>
+                    <select id="admin-mission-type">
+                        <option value="score">Reach Map % (One Game)</option>
+                        <option value="kills_game">Kills (One Game)</option>
+                        <option value="kills_total">Kills (Total)</option>
+                        <option value="games_played">Games Played</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Target Value (e.g., 50 for 50 kills or 10 for 10%)</label>
+                    <input type="number" id="admin-mission-value" required min="1" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>Reward Skin (Select ID)</label>
+                    <select id="admin-mission-reward">
+                        </select>
+                </div>
+                <div class="form-group">
+                    <label>Difficulty (1-5)</label>
+                    <input type="range" id="admin-mission-diff" min="1" max="5" value="1">
+                </div>
+                <button type="submit" class="admin-action-btn">CREATE MISSION</button>
+            </form>
+        </div>
+
+        <div class="admin-content-tab" id="admin-tab-manage-list">
+            <div class="admin-h2">Manage Data</div>
+            <div id="admin-data-list"></div>
+        </div>
+    </div>
+
+    <div id="settings-panel">
+        <div class="settings-header">
+            <img src="https://jappie716.github.io/games/paper-io-pixel/images/settings.png" alt="Settings">
+            <h2>Settings</h2>
+        </div>
+        
+        <div class="settings-tabs">
+            <button class="settings-tab active" data-tab="game">Game</button>
+            <button class="settings-tab" data-tab="theme">Theme</button>
+            <button class="settings-tab" data-tab="account">Account</button>
+        </div>
+        
+        <div class="settings-content">
+            <div class="tab-content active" id="tab-game">
+                <div class="setting-row">
+                    <label>Bot Count</label>
+                    <input type="range" id="setting-bots" min="1" max="20" value="10">
+                    <span class="value-display" id="bots-value">10</span>
+                </div>
+                <div class="setting-row">
+                    <label>Game Speed</label>
+                    <input type="range" id="setting-speed" min="1" max="15" value="9">
+                    <span class="value-display" id="speed-value">9</span>
+                </div>
+                <div class="setting-row">
+                    <label>Zoom Level</label>
+                    <input type="range" id="setting-zoom" min="10" max="30" value="18">
+                    <span class="value-display" id="zoom-value">1.8x</span>
+                </div>
+                <div class="setting-row">
+                    <label>Map Size</label>
+                    <select id="setting-mapsize">
+                        <option value="1500">Small</option>
+                        <option value="2000" selected>Medium</option>
+                        <option value="3000">Large</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="tab-theme">
+                <div class="theme-section">
+                    <div class="theme-section-title">Start Screen Theme</div>
+                    <div class="screen-theme-options">
+                        <button class="screen-theme-btn theme-standard selected" data-screen-theme="standard">
+                            <div class="theme-preview">
+                                <div class="theme-preview-text">PAPER<span>.IO</span></div>
+                            </div>
+                            <div class="theme-name">Standard</div>
+                        </button>
+                        <button class="screen-theme-btn theme-original" data-screen-theme="original">
+                            <div class="theme-preview">
+                                <img src="https://jappie716.github.io/games/paper-io-pixel/images/paperiopixellogo.png" alt="Original">
+                            </div>
+                            <div class="theme-name">Original</div>
+                        </button>
+                    </div>
+                </div>
+                </div>
+            
+            <div class="tab-content" id="tab-account">
+                <div class="account-section">
+                    <div class="account-avatar" id="account-avatar">?</div>
+                    <div class="account-name" id="account-name">Guest Player</div>
+                    <div class="account-stats">
+                        <span id="account-games">0</span> games played • Best: <span id="account-best">0%</span>
+                    </div>
+                    <div>
+                        <button class="account-btn secondary" id="reset-stats-btn">Reset Stats</button>
+                    </div>
+                    <div class="cloud-sync-info">
+                        <div class="sync-title">☁️ Cloud Save Status</div>
+                        <div class="sync-detail" id="cloud-sync-detail">Connecting...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <button id="close-settings">Save & Close</button>
+    </div>
+
+    <div id="pause-overlay">
+        <h2>PAUSED</h2>
+        <button id="resume-btn">Resume</button>
+        <button id="quit-btn">Quit to Menu</button>
+    </div>
+
+    <div id="skins-overlay">
+        <div class="skins-header">
+            <div class="skins-title">SKINS & MISSIONS</div>
+            <button class="close-skins-btn" id="close-skins">CLOSE</button>
+        </div>
+        <div class="skins-layout">
+            <div class="skins-main">
+                <div class="skins-filter-bar">
+                    <button class="filter-btn active" id="filter-all" data-filter="all">All Skins</button>
+                    <button class="filter-btn" id="filter-owned" data-filter="owned">Owned Skins</button>
+                </div>
+                <div class="skins-grid" id="skins-grid"></div>
+                
+                <button id="daily-reward-btn" class="skins-btn" style="margin-top: auto; align-self: center; width: 100%; background: linear-gradient(180deg, #ffd32a 0%, #ffa502 100%); box-shadow: 0 6px 0 #e67e22;">
+                    <img src="https://jappie716.github.io/games/paper-io-pixel/images/skins.png" alt="Reward" style="filter: brightness(0) invert(1);">
+                    <span>Daily Reward</span>
+                </button>
+            </div>
+            <div class="skins-sidebar">
+                <div class="missions-title">
+                    <span>📜 Missions</span>
+                    <span style="font-size: 12px; color: rgba(255,255,255,0.5); margin-left: auto;">Easiest First</span>
+                </div>
+                <div class="missions-list" id="missions-list">
+                    </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="daily-overlay">
+        <div class="daily-title">DAILY SPIN</div>
+        <div class="wheel-container">
+            <div class="wheel-pointer"></div>
+            <div id="wheel"></div>
+            <div id="wheel-result">
+                <div class="reward-name">UNLOCKED!</div>
+                <div class="reward-preview" id="reward-icon">🎁</div>
+                <div class="reward-name" id="reward-text">New Skin</div>
+                <button id="claim-reward" style="margin-top: 15px; background: #00d2d3; border: none; padding: 10px 20px; border-radius: 20px; font-weight: 900; color: white; cursor: pointer;">CLAIM</button>
+            </div>
+        </div>
+        <button id="spin-btn">SPIN!</button>
+        <div class="daily-timer" id="daily-timer">Next spin in: 00:00:00</div>
+        <button id="close-daily" style="margin-top: 20px; background: none; border: 1px solid white; color: white; padding: 5px 15px; border-radius: 15px; cursor: pointer;">Close</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+    <canvas id="minimap" width="150" height="150"></canvas>
+    <button id="ingame-settings">
+        <img src="https://jappie716.github.io/games/paper-io-pixel/images/settings.png" alt="Settings" style="width: 24px; height: 24px; filter: brightness(0) invert(1);">
+    </button>
+    <div id="score-display">0%</div>
+    <div id="leaderboard">
+        <h3>Leaderboard</h3>
+        <div id="leaderboard-entries"></div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+    <script>
+// ==========================================
+// FIREBASE CONFIGURATION & INITIALIZATION
+// ==========================================
+const firebaseConfig = {
+    apiKey: "AIzaSyA0K4geAuueVfiItB_98-LkqRTnpYNUNvM",
+    authDomain: "gameparadise-80490.firebaseapp.com",
+    projectId: "gameparadise-80490",
+    storageBucket: "gameparadise-80490.firebasestorage.app",
+    messagingSenderId: "335620903527",
+    appId: "1:335620903527:web:1bc1e01a386bf6e4e7fac2"
+};
+
+let firebaseApp = null;
+let auth = null;
+let db = null;
+let currentUser = null;
+let firebaseReady = false;
+let isAdmin = false;
+
+// List of allowed admin emails (based on rules)
+const ADMIN_EMAILS = ["someoeneheilig@gmail.com", "melle1337k@gmail.com"];
+
+try {
+    firebaseApp = firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    db = firebase.firestore();
+    console.log('Firebase initialized successfully');
+} catch (error) {
+    console.error('Firebase init failed: ' + error.message);
+}
+
+// ==========================================
+// DATA: SKINS & MISSIONS (Separated)
+// ==========================================
+let SKINS = {
+    'default': { name: 'Classic Red', color: '#ff4757', type: 'color' },
+    'blue': { name: 'Ocean Blue', color: '#1e90ff', type: 'color' },
+    'icon_diamond': { name: 'Rich', color: '#00d2d3', type: 'icon', icon: '💎' },
+    'icon_ghost': { name: 'Ghost', color: '#747d8c', type: 'icon', icon: '👻' },
+    'green': { name: 'Grass Green', color: '#2ed573', type: 'color' },
+    'icon_heart': { name: 'Lover', color: '#ff9ff3', type: 'icon', icon: '❤️' },
+    'icon_star': { name: 'Super Star', color: '#ffd32a', type: 'icon', icon: '⭐' },
+    'icon_fire': { name: 'On Fire', color: '#ff6b6b', type: 'icon', icon: '🔥' },
+    'icon_ninja': { name: 'Ninja', color: '#2f3542', type: 'icon', icon: '🥷' },
+    'icon_alien': { name: 'Alien', color: '#26de81', type: 'icon', icon: '👽' },
+    'icon_robot': { name: 'Mecha', color: '#576574', type: 'icon', icon: '🤖' },
+    'icon_king': { name: 'The King', color: '#a55eea', type: 'icon', icon: '👑' }
+};
+
+// New Mission Structure: ID -> { type, target, skinReward, difficulty }
+let MISSIONS = {
+    'm_games_1': { type: 'games_played', target: 1, skinReward: 'blue', difficulty: 1 },
+    'm_games_10': { type: 'games_played', target: 10, skinReward: 'icon_heart', difficulty: 2 },
+    'm_games_50': { type: 'games_played', target: 50, skinReward: 'icon_robot', difficulty: 4 },
+    'm_kills_tot_5': { type: 'kills_total', target: 5, skinReward: 'green', difficulty: 2 },
+    'm_kills_tot_20': { type: 'kills_total', target: 20, skinReward: 'icon_fire', difficulty: 3 },
+    'm_kills_game_3': { type: 'kills_game', target: 3, skinReward: 'icon_ninja', difficulty: 3 },
+    'm_score_10': { type: 'score', target: 10, skinReward: 'icon_star', difficulty: 3 },
+    'm_score_20': { type: 'score', target: 20, skinReward: 'icon_alien', difficulty: 4 },
+    'm_score_win': { type: 'score', target: 99.9, skinReward: 'icon_king', difficulty: 5 }
+};
+
+let unlockedSkins = ['default'];
+let currentSkin = 'default';
+let lastDailyReward = 0;
+let totalKills = 0;
+
+const skinImages = {}; // Image cache
+
+// ==========================================
+// ADMIN & CLOUD CONFIG FUNCTIONS
+// ==========================================
+async function loadGameConfig() {
+    if (!db) return;
+    try {
+        const doc = await db.collection('games').doc('paperio_config').get();
+        if (doc.exists) {
+            const data = doc.data();
+            if (data.skins) SKINS = { ...SKINS, ...data.skins };
+            if (data.missions) MISSIONS = { ...MISSIONS, ...data.missions };
+            console.log('Loaded remote config');
+        }
+    } catch (e) {
+        console.error('Failed to load global config', e);
+    }
+}
+
+async function saveAdminData() {
+    if (!isAdmin || !db) return;
+    try {
+        await db.collection('games').doc('paperio_config').set({ 
+            skins: SKINS,
+            missions: MISSIONS 
+        }, { merge: true });
+        alert('Saved to Cloud successfully!');
+        initSkins(); 
+        updateAdminLists();
+    } catch (e) {
+        alert('Error saving: ' + e.message);
+    }
+}
+
+function initAdminPanel() {
+    const btn = document.getElementById('admin-panel-btn');
+    const overlay = document.getElementById('admin-overlay');
+    const close = document.getElementById('close-admin');
+    
+    // Tab Switching logic
+    const tabs = document.querySelectorAll('.admin-nav-btn');
+    const contents = document.querySelectorAll('.admin-content-tab');
+    
+    tabs.forEach(tab => {
+        tab.onclick = () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            contents.forEach(c => c.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById(`admin-tab-${tab.dataset.tab}`).classList.add('active');
+            if(tab.dataset.tab === 'manage-list') updateAdminLists();
+            if(tab.dataset.tab === 'create-mission') updateMissionRewardSelect();
+        };
+    });
+
+    btn.onclick = () => { overlay.style.display = 'block'; updateMissionRewardSelect(); };
+    close.onclick = () => { overlay.style.display = 'none'; };
+    
+    // SKIN CREATION
+    const skinTypeSelect = document.getElementById('admin-skin-type');
+    skinTypeSelect.onchange = () => {
+        document.getElementById('admin-icon-group').style.display = skinTypeSelect.value === 'icon' ? 'block' : 'none';
+        document.getElementById('admin-image-group').style.display = skinTypeSelect.value === 'image' ? 'block' : 'none';
+    };
+
+    document.getElementById('admin-skin-form').onsubmit = (e) => {
+        e.preventDefault();
+        const id = document.getElementById('admin-skin-id').value;
+        const type = skinTypeSelect.value;
+        const skinData = {
+            name: document.getElementById('admin-skin-name').value,
+            color: document.getElementById('admin-skin-color').value,
+            type: type
+        };
+        if (type === 'icon') skinData.icon = document.getElementById('admin-skin-icon').value;
+        if (type === 'image') skinData.imageUrl = document.getElementById('admin-skin-image').value;
+        
+        SKINS[id] = skinData;
+        saveAdminData();
+    };
+
+    // MISSION CREATION
+    document.getElementById('admin-mission-form').onsubmit = (e) => {
+        e.preventDefault();
+        const id = document.getElementById('admin-mission-id').value;
+        const missionData = {
+            type: document.getElementById('admin-mission-type').value,
+            target: parseFloat(document.getElementById('admin-mission-value').value),
+            skinReward: document.getElementById('admin-mission-reward').value,
+            difficulty: parseInt(document.getElementById('admin-mission-diff').value)
+        };
+        MISSIONS[id] = missionData;
+        saveAdminData();
+    };
+}
+
+function updateMissionRewardSelect() {
+    const select = document.getElementById('admin-mission-reward');
+    select.innerHTML = '';
+    for(const key in SKINS) {
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.innerText = `${SKINS[key].name} (${key})`;
+        select.appendChild(opt);
+    }
+}
+
+function updateAdminLists() {
+    const listContainer = document.getElementById('admin-data-list');
+    listContainer.innerHTML = '';
+
+    // List Skins
+    const skinsHeader = document.createElement('h3');
+    skinsHeader.innerText = "Skins";
+    skinsHeader.style.color = "white"; skinsHeader.style.marginTop = "10px";
+    listContainer.appendChild(skinsHeader);
+
+    for (const key in SKINS) {
+        if(key === 'default') continue;
+        const div = document.createElement('div');
+        div.className = 'admin-list-item';
+        div.innerHTML = `<span>🎨 ${SKINS[key].name} (${key})</span>`;
+        const delBtn = document.createElement('button');
+        delBtn.className = 'admin-delete-btn';
+        delBtn.innerText = 'DELETE';
+        delBtn.onclick = () => { delete SKINS[key]; saveAdminData(); };
+        div.appendChild(delBtn);
+        listContainer.appendChild(div);
+    }
+
+    // List Missions
+    const missionHeader = document.createElement('h3');
+    missionHeader.innerText = "Missions";
+    missionHeader.style.color = "white"; missionHeader.style.marginTop = "20px";
+    listContainer.appendChild(missionHeader);
+
+    for (const key in MISSIONS) {
+        const div = document.createElement('div');
+        div.className = 'admin-list-item';
+        const m = MISSIONS[key];
+        div.innerHTML = `<span>📜 ${key} (${m.type}: ${m.target}) -> ${m.skinReward}</span>`;
+        const delBtn = document.createElement('button');
+        delBtn.className = 'admin-delete-btn';
+        delBtn.innerText = 'DELETE';
+        delBtn.onclick = () => { delete MISSIONS[key]; saveAdminData(); };
+        div.appendChild(delBtn);
+        listContainer.appendChild(div);
+    }
+}
+
+// ==========================================
+// CLOUD SAVE MANAGER
+// ==========================================
+const CloudSave = {
+    getUserDoc() {
+        if (!currentUser || !db) return null;
+        return db.collection('users').doc(currentUser.uid).collection('saveData').doc('paperio2');
+    },
+    async save(data, silent = false) {
+        if (!db || !currentUser) return false;
+        const userDoc = this.getUserDoc();
+        if (!userDoc) return false;
+        try {
+            if(!silent) document.getElementById('cloud-sync-detail').textContent = 'Saving...';
+            const saveData = {
+                highScore: data.highScore || 0,
+                gamesPlayed: data.gamesPlayed || 0,
+                totalKills: data.totalKills || 0,
+                playerName: data.playerName || 'Guest',
+                playerColor: data.playerColor || '#ff4757',
+                unlockedSkins: data.unlockedSkins || ['default'],
+                selectedSkin: data.selectedSkin || 'default',
+                lastDailyReward: data.lastDailyReward || 0,
+                settings: data.settings || {},
+                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            await userDoc.set(saveData, { merge: true });
+            if(!silent) {
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+                document.getElementById('cloud-sync-detail').textContent = '✅ Saved at ' + timeStr;
+            }
+            return true;
+        } catch (error) {
+            console.error('Save failed: ' + error.message);
+            if(!silent) document.getElementById('cloud-sync-detail').textContent = 'Error saving';
+            return false;
+        }
+    },
+    async load() {
+        if (!db || !currentUser) return null;
+        const userDoc = this.getUserDoc();
+        if (!userDoc) return null;
+        try {
+            const doc = await userDoc.get();
+            if (doc.exists) return doc.data();
+            return null;
+        } catch (error) {
+            console.error('Load failed: ' + error.message);
+            return null;
+        }
+    },
+    async syncData() {
+        const cloudData = await this.load();
+        const localData = getLocalSaveData();
+        if (!cloudData && !localData) return getDefaultSaveData();
+        if (!cloudData) { await this.save(localData, true); return localData; }
+        
+        const mergedData = {
+            highScore: Math.max(cloudData.highScore || 0, localData.highScore || 0),
+            gamesPlayed: Math.max(cloudData.gamesPlayed || 0, localData.gamesPlayed || 0),
+            totalKills: Math.max(cloudData.totalKills || 0, localData.totalKills || 0),
+            playerName: cloudData.playerName || localData.playerName || '',
+            playerColor: cloudData.playerColor || localData.playerColor || '#ff4757',
+            unlockedSkins: [...new Set([...(cloudData.unlockedSkins || []), ...(localData.unlockedSkins || [])])],
+            selectedSkin: cloudData.selectedSkin || 'default',
+            lastDailyReward: Math.max(cloudData.lastDailyReward || 0, localData.lastDailyReward || 0),
+            settings: { ...cloudData.settings, ...localData.settings }
+        };
+        saveLocalData(mergedData);
+        return mergedData;
+    }
+};
+
+function getLocalSaveData() {
+    return {
+        highScore: parseInt(localStorage.getItem('paperio_highscore') || '0'),
+        gamesPlayed: parseInt(localStorage.getItem('paperio_games') || '0'),
+        totalKills: parseInt(localStorage.getItem('paperio_kills') || '0'),
+        playerName: localStorage.getItem('paperio_name') || '',
+        playerColor: localStorage.getItem('paperio_player_color') || '#ff4757',
+        unlockedSkins: JSON.parse(localStorage.getItem('paperio_skins') || '["default"]'),
+        selectedSkin: localStorage.getItem('paperio_selected_skin') || 'default',
+        lastDailyReward: parseInt(localStorage.getItem('paperio_daily') || '0'),
+        settings: JSON.parse(localStorage.getItem('paperio_settings') || '{}')
+    };
+}
+
+function getDefaultSaveData() {
+    return { highScore: 0, gamesPlayed: 0, totalKills: 0, playerName: '', playerColor: '#ff4757', unlockedSkins: ['default'], selectedSkin: 'default', lastDailyReward: 0, settings: {} };
+}
+
+function saveLocalData(data) {
+    if (data.highScore !== undefined) localStorage.setItem('paperio_highscore', data.highScore);
+    if (data.gamesPlayed !== undefined) localStorage.setItem('paperio_games', data.gamesPlayed);
+    if (data.totalKills !== undefined) localStorage.setItem('paperio_kills', data.totalKills);
+    if (data.playerName !== undefined) localStorage.setItem('paperio_name', data.playerName);
+    if (data.playerColor !== undefined) localStorage.setItem('paperio_player_color', data.playerColor);
+    if (data.unlockedSkins !== undefined) localStorage.setItem('paperio_skins', JSON.stringify(data.unlockedSkins));
+    if (data.selectedSkin !== undefined) localStorage.setItem('paperio_selected_skin', data.selectedSkin);
+    if (data.lastDailyReward !== undefined) localStorage.setItem('paperio_daily', data.lastDailyReward);
+    if (data.settings !== undefined) localStorage.setItem('paperio_settings', JSON.stringify(data.settings));
+}
+
+// ==========================================
+// AUTH & INITIALIZATION
+// ==========================================
+async function initializeAuth() {
+    const loadingDetails = document.getElementById('loading-details');
+    if (!auth) { loadingDetails.textContent = 'Firebase auth not available'; return; }
+    
+    return new Promise((resolve) => {
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+                firebaseReady = true;
+                
+                // CHECK ADMIN
+                if (user.email && ADMIN_EMAILS.includes(user.email)) {
+                    isAdmin = true;
+                    document.getElementById('admin-panel-btn').style.display = 'block';
+                    initAdminPanel();
+                }
+
+                loadingDetails.textContent = 'Syncing data...';
+                try {
+                    const syncedData = await CloudSave.syncData();
+                    applyLoadedData(syncedData);
+                    document.getElementById('cloud-sync-detail').textContent = '✅ Logged in as ' + (user.email || 'Guest');
+                } catch (error) {
+                    console.error('Sync error', error);
+                    applyLoadedData(getLocalSaveData());
+                }
+            } else {
+                loadingDetails.textContent = 'Starting guest session...';
+                try {
+                    await auth.signInAnonymously();
+                } catch (error) {
+                    applyLoadedData(getLocalSaveData());
+                    resolve();
+                }
+            }
+            resolve();
+        });
+    });
+}
+
+function applyLoadedData(data) {
+    if (!data) return;
+    gamesPlayed = data.gamesPlayed || 0;
+    highScore = data.highScore || 0;
+    totalKills = data.totalKills || 0;
+    unlockedSkins = data.unlockedSkins || ['default'];
+    currentSkin = data.selectedSkin || 'default';
+    lastDailyReward = data.lastDailyReward || 0;
+    
+    document.getElementById('games-played').textContent = gamesPlayed;
+    document.getElementById('high-score').textContent = highScore + '%';
+    if (data.playerName) playerNameInput.value = data.playerName;
+    if (data.playerColor) { CONFIG.colors.player = data.playerColor; selectedPlayerColor = data.playerColor; }
+    if (data.settings) {
+        if (data.settings.botCount) CONFIG.botCount = data.settings.botCount;
+        if (data.settings.speed) CONFIG.speed = data.settings.speed;
+        if (data.settings.zoom) CONFIG.zoom = data.settings.zoom;
+        if (data.settings.mapRadius) CONFIG.mapRadius = data.settings.mapRadius;
+    }
+    applySkin(currentSkin);
+    updateAccountTab();
+}
+
+function getCurrentGameData() {
+    return {
+        highScore: highScore, gamesPlayed: gamesPlayed, totalKills: totalKills,
+        playerName: playerNameInput.value.trim() || 'Guest',
+        playerColor: CONFIG.colors.player,
+        unlockedSkins: unlockedSkins, selectedSkin: currentSkin,
+        lastDailyReward: lastDailyReward,
+        settings: { botCount: CONFIG.botCount, speed: CONFIG.speed, zoom: CONFIG.zoom, mapRadius: CONFIG.mapRadius, playerColor: CONFIG.colors.player, screenTheme: currentScreenTheme }
+    };
+}
+
+// ==========================================
+// SKINS SYSTEM UI
+// ==========================================
+let skinsFilter = 'all';
+
+function initSkins() {
+    const skinsGrid = document.getElementById('skins-grid');
+    const missionsList = document.getElementById('missions-list');
+    const closeBtn = document.getElementById('close-skins');
+    
+    const filterAll = document.getElementById('filter-all');
+    const filterOwned = document.getElementById('filter-owned');
+
+    if (filterAll && filterOwned) {
+        filterAll.onclick = () => { skinsFilter = 'all'; renderSkinsContent(); };
+        filterOwned.onclick = () => { skinsFilter = 'owned'; renderSkinsContent(); };
+    }
+
+    renderSkinsContent();
+    closeBtn.onclick = () => { document.getElementById('skins-overlay').style.display = 'none'; saveProgress('skins_closed'); };
+}
+
+function renderSkinsContent() {
+    const skinsGrid = document.getElementById('skins-grid');
+    const missionsList = document.getElementById('missions-list');
+    const filterAll = document.getElementById('filter-all');
+    const filterOwned = document.getElementById('filter-owned');
+
+    if (filterAll && filterOwned) {
+        filterAll.classList.toggle('active', skinsFilter === 'all');
+        filterOwned.classList.toggle('active', skinsFilter === 'owned');
+    }
+
+    // Sort skins. Default first, then by alphanumeric
+    const entries = Object.entries(SKINS);
+    
+    skinsGrid.innerHTML = '';
+    const gridSkins = entries.filter(([key, skin]) => {
+        if (skinsFilter === 'owned') return unlockedSkins.includes(key);
+        return true;
+    });
+
+    for (const [key, skin] of gridSkins) {
+        const card = document.createElement('div');
+        const isSelected = key === currentSkin;
+        const isUnlocked = unlockedSkins.includes(key);
+        
+        card.className = `skin-card ${isSelected ? 'selected' : ''} ${!isUnlocked ? 'locked' : ''}`;
+        card.dataset.skin = key;
+        
+        let previewHtml = '';
+        if (skin.type === 'image') {
+            previewHtml = `<div class="skin-preview" style="background: ${skin.color || '#fff'}"><img src="${skin.imageUrl}" alt="${skin.name}"></div>`;
+        } else if (skin.type === 'color') {
+            previewHtml = `<div class="skin-preview" style="background: ${skin.color}"></div>`;
+        } else {
+            previewHtml = `<div class="skin-preview" style="background: ${skin.color};">${skin.icon}</div>`;
+        }
+        
+        card.innerHTML = `
+            ${previewHtml}
+            ${!isUnlocked ? '<img src="https://jappie716.github.io/games/paper-io-pixel/images/lock.png" class="lock-icon" onerror="this.style.display=\'none\'">' : ''}
+            <div class="skin-name">${skin.name}</div>
+        `;
+        
+        card.onclick = () => selectSkin(key);
+        skinsGrid.appendChild(card);
+    }
+
+    // Render Missions
+    missionsList.innerHTML = '';
+    // Sort missions by difficulty
+    const missionEntries = Object.entries(MISSIONS).sort(([,a], [,b]) => a.difficulty - b.difficulty);
+
+    for (const [key, mission] of missionEntries) {
+        const skinKey = mission.skinReward;
+        const isUnlocked = unlockedSkins.includes(skinKey);
+        const skinName = SKINS[skinKey] ? SKINS[skinKey].name : 'Unknown Skin';
+        
+        const item = document.createElement('div');
+        item.className = `mission-item ${isUnlocked ? 'completed' : 'locked'}`;
+        
+        let dotsHtml = '<div class="diff-dots">';
+        for (let i = 0; i < 5; i++) { dotsHtml += `<div class="diff-dot ${i < mission.difficulty ? 'active' : ''}"></div>`; }
+        dotsHtml += '</div>';
+
+        // Generate Readable Text
+        let reqText = "";
+        if(mission.type === 'score') reqText = `Reach ${mission.target}% of the map`;
+        else if(mission.type === 'kills_game') reqText = `Kill ${mission.target} players in one game`;
+        else if(mission.type === 'kills_total') reqText = `Kill ${mission.target} players total`;
+        else if(mission.type === 'games_played') reqText = `Play ${mission.target} games`;
+
+        item.innerHTML = `
+            <div class="mission-header">
+                <span class="mission-name">Reward: ${skinName}</span>
+                <span class="mission-status">${isUnlocked ? 'Owned' : 'Locked'}</span>
+            </div>
+            <div class="mission-req">${reqText}</div>
+            <div class="mission-difficulty">
+                <span class="diff-label">Difficulty</span>
+                ${dotsHtml}
+            </div>
+        `;
+        missionsList.appendChild(item);
+    }
+}
+
+function selectSkin(key) {
+    if (!unlockedSkins.includes(key)) { 
+        // Find requirement text for notification
+        let req = "Complete a mission to unlock.";
+        for(const mKey in MISSIONS) {
+            if(MISSIONS[mKey].skinReward === key) {
+                if(MISSIONS[mKey].type === 'score') req = `Unlock by reaching ${MISSIONS[mKey].target}% map`;
+                else if(MISSIONS[mKey].type === 'kills_total') req = `Unlock by killing ${MISSIONS[mKey].target} total enemies`;
+                // ... etc
+            }
+        }
+        alert(`Locked! ${req}`); 
+        return; 
+    }
+    currentSkin = key;
+    applySkin(key);
+    document.querySelectorAll('.skin-card').forEach(card => {
+        card.classList.toggle('selected', card.dataset.skin === key);
+    });
+}
+
+function applySkin(key) {
+    const skin = SKINS[key];
+    if (!skin) return;
+    CONFIG.colors.player = skin.color;
+    selectedPlayerColor = skin.color;
+    
+    // Preload image if needed
+    if (skin.type === 'image' && skin.imageUrl && !skinImages[key]) {
+        const img = new Image();
+        img.src = skin.imageUrl;
+        skinImages[key] = img;
+    }
+    
+    saveLocalData({ selectedSkin: key, playerColor: skin.color });
+}
+
+function unlockSkin(key) {
+    if (!unlockedSkins.includes(key) && SKINS[key]) {
+        unlockedSkins.push(key);
+        saveLocalData({ unlockedSkins: unlockedSkins });
+        initSkins();
+        const skin = SKINS[key];
+        const icon = skin.type === 'icon' ? skin.icon : '🎨';
+        showNotification(skin.name, icon);
+        CloudSave.save(getCurrentGameData());
+    }
+}
+
+function showNotification(skinName, icon) {
+    const area = document.getElementById('notification-area');
+    if (!area) return;
+    const toast = document.createElement('div');
+    toast.className = 'notification-toast';
+    toast.innerHTML = `<div class="notification-icon">${icon}</div><div class="notification-content"><div class="notification-title">NEW SKIN UNLOCKED!</div><div class="notification-message">${skinName}</div></div>`;
+    area.appendChild(toast);
+    setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3500);
+}
+
+// CHECK MISSIONS dynamically based on MISSIONS object
+function checkDynamicMissions(gameStats) {
+    for (const key in MISSIONS) {
+        const m = MISSIONS[key];
+        if (unlockedSkins.includes(m.skinReward)) continue;
+
+        let completed = false;
+        if (m.type === 'score' && gameStats.score >= m.target) completed = true;
+        if (m.type === 'kills_game' && gameStats.kills >= m.target) completed = true;
+        if (m.type === 'kills_total' && totalKills >= m.target) completed = true;
+        if (m.type === 'games_played' && gamesPlayed >= m.target) completed = true;
+
+        if (completed) unlockSkin(m.skinReward);
+    }
+}
+
+// ==========================================
+// DAILY REWARD SYSTEM
+// ==========================================
+function initDailyReward() {
+    const btn = document.getElementById('daily-reward-btn');
+    const overlay = document.getElementById('daily-overlay');
+    const closeBtn = document.getElementById('close-daily');
+    const spinBtn = document.getElementById('spin-btn');
+    
+    btn.onclick = openDailyReward;
+    closeBtn.onclick = () => overlay.style.display = 'none';
+    spinBtn.onclick = spinWheel;
+    setInterval(updateDailyTimer, 1000);
+}
+
+function openDailyReward() {
+    document.getElementById('daily-overlay').style.display = 'flex';
+    document.getElementById('wheel-result').style.display = 'none';
+    updateDailyTimer();
+}
+
+function updateDailyTimer() {
+    const now = Date.now();
+    const diff = now - lastDailyReward;
+    const cooldown = 24 * 60 * 60 * 1000;
+    const spinBtn = document.getElementById('spin-btn');
+    const timer = document.getElementById('daily-timer');
+    
+    if (diff >= cooldown) {
+        spinBtn.disabled = false;
+        timer.textContent = "Ready to spin!";
+        timer.style.color = "#2ed573";
+    } else {
+        spinBtn.disabled = true;
+        const remaining = cooldown - diff;
+        const h = Math.floor(remaining / (1000 * 60 * 60));
+        const m = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+        const s = Math.floor((remaining % (1000 * 60)) / 1000);
+        timer.textContent = `Next spin in: ${h}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        timer.style.color = "rgba(255,255,255,0.7)";
+    }
+}
+
+function spinWheel() {
+    const wheel = document.getElementById('wheel');
+    const spinBtn = document.getElementById('spin-btn');
+    spinBtn.disabled = true;
+    lastDailyReward = Date.now();
+    saveLocalData({ lastDailyReward: lastDailyReward });
+    
+    const rotations = 5 + Math.random() * 5;
+    const degrees = rotations * 360;
+    wheel.style.transform = `rotate(${degrees}deg)`;
+    
+    setTimeout(() => {
+        unlockSkin('icon_diamond');
+        const lockedSkins = Object.keys(SKINS).filter(k => !unlockedSkins.includes(k));
+        let rewardName = "Nothing";
+        let rewardIcon = "😢";
+        
+        if (lockedSkins.length > 0) {
+            const key = lockedSkins[Math.floor(Math.random() * lockedSkins.length)];
+            const skin = SKINS[key];
+            unlockSkin(key);
+            rewardName = skin.name;
+            rewardIcon = skin.type === 'icon' ? skin.icon : '🎨';
+        } else {
+            rewardName = "All Unlocked!";
+            rewardIcon = "🏆";
+        }
+        
+        const result = document.getElementById('wheel-result');
+        document.getElementById('reward-icon').textContent = rewardIcon;
+        document.getElementById('reward-text').textContent = rewardName;
+        result.style.display = 'block';
+        
+        document.getElementById('claim-reward').onclick = () => {
+            document.getElementById('daily-overlay').style.display = 'none';
+            initSkins();
+        };
+        CloudSave.save(getCurrentGameData());
+    }, 4000);
+}
+
+// ==========================================
+// GAME ENGINE & LOGIC
+// ==========================================
+let autoSaveInterval = null;
+function startAutoSave() {
+    if (autoSaveInterval) clearInterval(autoSaveInterval);
+    autoSaveInterval = setInterval(async () => {
+        if (gameRunning && !gamePaused && firebaseReady && currentUser) {
+            const data = getCurrentGameData();
+            saveLocalData(data);
+            await CloudSave.save(data, true);
+        }
+    }, 15000);
+}
+function stopAutoSave() {
+    if (autoSaveInterval) { clearInterval(autoSaveInterval); autoSaveInterval = null; }
+}
+async function saveProgress(reason = 'manual') {
+    const data = getCurrentGameData();
+    saveLocalData(data);
+    const silent = reason === 'auto';
+    await CloudSave.save(data, silent);
+}
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('ui-overlay');
+const startBtn = document.getElementById('start-btn');
+const playerNameInput = document.getElementById('player-name');
+const bgCanvas = document.getElementById('bg-animation');
+const bgCtx = bgCanvas.getContext('2d');
+const minimap = document.getElementById('minimap');
+const minimapCtx = minimap.getContext('2d');
+const scoreDisplay = document.getElementById('score-display');
+const leaderboard = document.getElementById('leaderboard');
+const leaderboardEntries = document.getElementById('leaderboard-entries');
+const settingsBtn = document.getElementById('settings-btn');
+const settingsPanel = document.getElementById('settings-panel');
+const settingsOverlay = document.getElementById('settings-overlay');
+const closeSettingsBtn = document.getElementById('close-settings');
+const ingameSettingsBtn = document.getElementById('ingame-settings');
+const pauseOverlay = document.getElementById('pause-overlay');
+const resumeBtn = document.getElementById('resume-btn');
+const quitBtn = document.getElementById('quit-btn');
+const menuSkinsBtn = document.getElementById('menu-skins-btn');
+const loadingOverlay = document.getElementById('loading-overlay');
+
+const CONFIG = {
+    mapRadius: 2000, tileSize: 10, speed: 9, botSpeed: 7.875, turnSpeed: 0.08,
+    playerSize: 20, minTrailDist: 5, zoom: 1.8, botCount: 10,
+    colors: { player: '#ff4757', trail: '#ff6b81', bg: '#1a1a2e', mapBg: '#2d2d44', grid: 'rgba(255,255,255,0.05)', boundary: '#54a0ff' }
+};
+
+const BOT_COLORS = ['#2ed573', '#1e90ff', '#ffd32a', '#a55eea', '#ff6348', '#26de81', '#fd79a8', '#00cec9', '#e17055', '#6c5ce7', '#fdcb6e', '#00b894'];
+const BOT_NAMES = ['Alex', 'Max', 'Sam', 'Jordan', 'Taylor', 'Casey', 'Riley', 'Quinn', 'Morgan', 'Avery', 'Blake', 'Drew', 'Skyler', 'Charlie'];
+
+let gameRunning = false;
+let gamePaused = false;
+let mousePos = { x: 0, y: 0 };
+let lastMousePos = { x: 0, y: 0 };
+let mouseMoving = false;
+let mouseStopTimer = null;
+let lastInputMethod = 'mouse';
+const keys = {};
+
+let gridSize = 0;
+let mapCenterX = 0;
+let mapCenterY = 0;
+let camera = { x: 0, y: 0 };
+let player = null;
+let bots = [];
+let territory = [];
+let cachedTotalTiles = 0;
+let gamesPlayed = parseInt(localStorage.getItem('paperio_games') || '0');
+let highScore = parseInt(localStorage.getItem('paperio_highscore') || '0');
+let currentScreenTheme = localStorage.getItem('paperio_screen_theme') || 'original';
+applyScreenTheme(currentScreenTheme);
+let minimapNeedsUpdate = true;
+let currentTab = 'game';
+let selectedPlayerColor = CONFIG.colors.player;
+
+function applyScreenTheme(themeName) {
+    currentScreenTheme = themeName;
+    if (themeName === 'original') overlay.classList.add('theme-original');
+    else overlay.classList.remove('theme-original');
+}
+
+function initSettingsPanel() {
+    const botSlider = document.getElementById('setting-bots');
+    const speedSlider = document.getElementById('setting-speed');
+    const zoomSlider = document.getElementById('setting-zoom');
+    const mapSizeSelect = document.getElementById('setting-mapsize');
+
+    botSlider.value = CONFIG.botCount;
+    document.getElementById('bots-value').textContent = CONFIG.botCount;
+    speedSlider.value = Math.round(CONFIG.speed);
+    document.getElementById('speed-value').textContent = Math.round(CONFIG.speed);
+    zoomSlider.value = Math.round(CONFIG.zoom * 10);
+    document.getElementById('zoom-value').textContent = CONFIG.zoom.toFixed(1) + 'x';
+    mapSizeSelect.value = CONFIG.mapRadius;
+    selectedPlayerColor = CONFIG.colors.player;
+
+    updateAccountTab();
+
+    botSlider.addEventListener('input', (e) => { document.getElementById('bots-value').textContent = e.target.value; });
+    speedSlider.addEventListener('input', (e) => { document.getElementById('speed-value').textContent = e.target.value; });
+    zoomSlider.addEventListener('input', (e) => { document.getElementById('zoom-value').textContent = (e.target.value / 10).toFixed(1) + 'x'; });
+    
+    document.querySelectorAll('.settings-tab').forEach(tab => {
+        tab.addEventListener('click', () => { switchTab(tab.dataset.tab); });
+    });
+
+    document.querySelectorAll('.screen-theme-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const theme = btn.dataset.screenTheme;
+            document.querySelectorAll('.screen-theme-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            applyScreenTheme(theme);
+        });
+    });
+
+    document.getElementById('reset-stats-btn').addEventListener('click', async () => {
+        if (confirm('Are you sure you want to reset all your stats?')) {
+            localStorage.clear();
+            location.reload();
+        }
+    });
+
+    document.querySelectorAll('.screen-theme-btn').forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.screenTheme === currentScreenTheme);
+    });
+}
+
+function switchTab(tabName) {
+    currentTab = tabName;
+    document.querySelectorAll('.settings-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === tabName));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.toggle('active', content.id === 'tab-' + tabName));
+}
+
+function updateAccountTab() {
+    const name = playerNameInput.value.trim() || 'Guest Player';
+    document.getElementById('account-name').textContent = name;
+    document.getElementById('account-avatar').textContent = name.charAt(0).toUpperCase();
+    document.getElementById('account-games').textContent = gamesPlayed;
+    document.getElementById('account-best').textContent = highScore + '%';
+}
+
+function openSettings() {
+    settingsPanel.style.display = 'block';
+    settingsOverlay.style.display = 'block';
+    updateAccountTab();
+    switchTab('game');
+    document.querySelectorAll('.screen-theme-btn').forEach(btn => btn.classList.toggle('selected', btn.dataset.screenTheme === currentScreenTheme));
+}
+
+async function closeSettings() {
+    CONFIG.botCount = parseInt(document.getElementById('setting-bots').value);
+    CONFIG.speed = parseInt(document.getElementById('setting-speed').value);
+    CONFIG.botSpeed = CONFIG.speed * 0.875;
+    CONFIG.zoom = parseInt(document.getElementById('setting-zoom').value) / 10;
+    CONFIG.mapRadius = parseInt(document.getElementById('setting-mapsize').value);
+    CONFIG.colors.player = selectedPlayerColor;
+
+    localStorage.setItem('paperio_settings', JSON.stringify({ botCount: CONFIG.botCount, speed: CONFIG.speed, zoom: CONFIG.zoom, mapRadius: CONFIG.mapRadius, playerColor: CONFIG.colors.player }));
+    localStorage.setItem('paperio_screen_theme', currentScreenTheme);
+
+    settingsPanel.style.display = 'none';
+    settingsOverlay.style.display = 'none';
+    await saveProgress('settings_saved');
+}
+
+settingsBtn.onclick = openSettings;
+settingsOverlay.onclick = closeSettings;
+closeSettingsBtn.onclick = closeSettings;
+ingameSettingsBtn.onclick = () => { gamePaused = true; pauseOverlay.style.display = 'flex'; };
+resumeBtn.onclick = () => { gamePaused = false; pauseOverlay.style.display = 'none'; };
+quitBtn.onclick = async () => {
+    gamePaused = false; gameRunning = false; stopAutoSave();
+    pauseOverlay.style.display = 'none'; scoreDisplay.style.display = 'none'; leaderboard.style.display = 'none';
+    ingameSettingsBtn.style.display = 'none'; overlay.style.display = 'flex'; animateMenuBackground();
+    await saveProgress('quit_game');
+};
+menuSkinsBtn.onclick = () => { document.getElementById('skins-overlay').style.display = 'flex'; initSkins(); };
+
+initSettingsPanel();
+
+// Menu Animation
+let menuBlocks = [];
+function initMenuBackground() {
+    bgCanvas.width = window.innerWidth; bgCanvas.height = window.innerHeight; menuBlocks = [];
+    for (let i = 0; i < 25; i++) {
+        menuBlocks.push({
+            x: Math.random() * bgCanvas.width, y: Math.random() * bgCanvas.height, size: 30 + Math.random() * 60,
+            color: BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)],
+            speedX: (Math.random() - 0.5) * 2, speedY: (Math.random() - 0.5) * 2, rotation: Math.random() * Math.PI * 2, rotationSpeed: (Math.random() - 0.5) * 0.02
+        });
+    }
+}
+function animateMenuBackground() {
+    if (gameRunning) return;
+    bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+    for (let block of menuBlocks) {
+        block.x += block.speedX; block.y += block.speedY; block.rotation += block.rotationSpeed;
+        if (block.x < -block.size) block.x = bgCanvas.width + block.size;
+        if (block.x > bgCanvas.width + block.size) block.x = -block.size;
+        if (block.y < -block.size) block.y = bgCanvas.height + block.size;
+        if (block.y > bgCanvas.height + block.size) block.y = -block.size;
+        bgCtx.save(); bgCtx.translate(block.x, block.y); bgCtx.rotate(block.rotation); bgCtx.fillStyle = block.color; bgCtx.fillRect(-block.size/2, -block.size/2, block.size, block.size); bgCtx.restore();
+    }
+    requestAnimationFrame(animateMenuBackground);
+}
+
+function initGridData() {
+    gridSize = Math.ceil((CONFIG.mapRadius * 2) / CONFIG.tileSize);
+    mapCenterX = CONFIG.mapRadius; mapCenterY = CONFIG.mapRadius;
+    territory = []; for (let x = 0; x < gridSize; x++) territory[x] = new Uint8Array(gridSize);
+    cachedTotalTiles = 0;
+    for (let x = 0; x < gridSize; x++) {
+        for (let y = 0; y < gridSize; y++) {
+            if (Math.sqrt(Math.pow(x * CONFIG.tileSize + CONFIG.tileSize / 2 - mapCenterX, 2) + Math.pow(y * CONFIG.tileSize + CONFIG.tileSize / 2 - mapCenterY, 2)) <= CONFIG.mapRadius) cachedTotalTiles++;
+        }
+    }
+}
+function isInsideMap(worldX, worldY) { return Math.sqrt(Math.pow(worldX - mapCenterX, 2) + Math.pow(worldY - mapCenterY, 2)) <= CONFIG.mapRadius; }
+function worldToGrid(worldX, worldY) { return { gx: Math.floor(worldX / CONFIG.tileSize), gy: Math.floor(worldY / CONFIG.tileSize) }; }
+function setTerritory(gx, gy, val) { if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize && territory[gx]) territory[gx][gy] = val; }
+function getTerritory(gx, gy) { if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize && territory[gx]) return territory[gx][gy]; return 0; }
+function isPositionInAnyTerritory(worldX, worldY, checkRadius) {
+    const { gx, gy } = worldToGrid(worldX, worldY);
+    const gridRadius = Math.ceil(checkRadius / CONFIG.tileSize);
+    for (let dx = -gridRadius; dx <= gridRadius; dx++) {
+        for (let dy = -gridRadius; dy <= gridRadius; dy++) {
+            if (getTerritory(gx + dx, gy + dy) > 0) return true;
+        }
+    }
+    return false;
+}
+
+class Entity {
+    constructor(id, color, name) {
+        this.id = id; this.color = color; this.trailColor = this.lightenColor(color, 30); this.name = name;
+        this.x = 0; this.y = 0; this.angle = 0; this.trail = []; this.isOutside = false;
+        this.lastSafePos = { x: 0, y: 0 }; this.alive = true; this.territoryId = id + 1;
+        this.cachedScore = 0; this.scoreUpdateTimer = 0;
+    }
+    lightenColor(color, percent) {
+        const num = parseInt(color.replace('#', ''), 16);
+        const amt = Math.round(2.55 * percent);
+        const R = Math.min(255, (num >> 16) + amt), G = Math.min(255, ((num >> 8) & 0x00FF) + amt), B = Math.min(255, (num & 0x0000FF) + amt);
+        return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
+    }
+    spawn(avoidX, avoidY, avoidDist) {
+        let attempts = 0;
+        do {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 300 + Math.random() * (CONFIG.mapRadius - 500);
+            this.x = mapCenterX + Math.cos(angle) * dist;
+            this.y = mapCenterY + Math.sin(angle) * dist;
+            attempts++;
+        } while (attempts < 100 && (avoidX && Math.hypot(this.x - avoidX, this.y - avoidY) < avoidDist || isPositionInAnyTerritory(this.x, this.y, 80)));
+        this.angle = Math.random() * Math.PI * 2; this.trail = []; this.isOutside = false; this.lastSafePos = { x: this.x, y: this.y }; this.alive = true; this.createStartZone();
+    }
+    createStartZone() {
+        const r = 6; const { gx, gy } = worldToGrid(this.x, this.y);
+        for (let x = -r; x <= r; x++) for (let y = -r; y <= r; y++) if (x*x + y*y <= r*r) setTerritory(gx + x, gy + y, this.territoryId);
+        minimapNeedsUpdate = true;
+    }
+    handleBoundary() {
+        const dx = this.x - mapCenterX, dy = this.y - mapCenterY, dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > CONFIG.mapRadius - 5) { const angle = Math.atan2(dy, dx); this.x = mapCenterX + Math.cos(angle) * (CONFIG.mapRadius - 5); this.y = mapCenterY + Math.sin(angle) * (CONFIG.mapRadius - 5); }
+    }
+    checkTrailCollision(otherTrail, otherIsOutside) {
+        if (!otherIsOutside || otherTrail.length < 5) return false;
+        for (let i = 0; i < otherTrail.length - 3; i++) if (Math.hypot(this.x - otherTrail[i].x, this.y - otherTrail[i].y) < CONFIG.playerSize * 0.8) return true;
+        return false;
+    }
+    capture() {
+        if (this.trail.length < 3) return;
+        for (let i = 0; i < this.trail.length - 1; i++) {
+            const x1 = this.trail[i].x, y1 = this.trail[i].y, x2 = this.trail[i+1].x, y2 = this.trail[i+1].y;
+            const dist = Math.hypot(x2-x1, y2-y1), steps = Math.ceil(dist/2);
+            for(let j=0; j<=steps; j++) {
+                const t = j/steps, x = x1 + (x2-x1)*t, y = y1 + (y2-y1)*t;
+                const {gx, gy} = worldToGrid(x, y);
+                for(let dx=-2; dx<=2; dx++) for(let dy=-2; dy<=2; dy++) setTerritory(gx+dx, gy+dy, this.territoryId);
+            }
+        }
+        this.floodFillCapture(); minimapNeedsUpdate = true; this.scoreUpdateTimer = 0;
+    }
+    floodFillCapture() {
+        const visited = new Uint8Array(gridSize * gridSize); const stack = [];
+        // Add borders to stack
+        for(let i=0; i<gridSize; i++) {
+             if(getTerritory(i,0)!=this.territoryId) {visited[i]=1; stack.push(i);}
+             if(getTerritory(i,gridSize-1)!=this.territoryId) {visited[(gridSize-1)*gridSize+i]=1; stack.push((gridSize-1)*gridSize+i);}
+             if(getTerritory(0,i)!=this.territoryId) {visited[i*gridSize]=1; stack.push(i*gridSize);}
+             if(getTerritory(gridSize-1,i)!=this.territoryId) {visited[i*gridSize+gridSize-1]=1; stack.push(i*gridSize+gridSize-1);}
+        }
+        while(stack.length>0) {
+            const idx = stack.pop(), x = idx % gridSize, y = Math.floor(idx / gridSize);
+            [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].forEach(n => {
+                if(n[0]>=0 && n[0]<gridSize && n[1]>=0 && n[1]<gridSize) {
+                    const nIdx = n[1]*gridSize+n[0];
+                    if(!visited[nIdx] && getTerritory(n[0],n[1])!==this.territoryId) { visited[nIdx]=1; stack.push(nIdx); }
+                }
+            });
+        }
+        for(let i=0; i<visited.length; i++) if(!visited[i] && getTerritory(i%gridSize, Math.floor(i/gridSize))!==this.territoryId) setTerritory(i%gridSize, Math.floor(i/gridSize), this.territoryId);
+    }
+    calculateScore() {
+        if(--this.scoreUpdateTimer > 0) return this.cachedScore;
+        this.scoreUpdateTimer = 30; let count = 0, sampled = 0;
+        for(let x=0; x<gridSize; x+=2) for(let y=0; y<gridSize; y+=2) if(isInsideMap(x*CONFIG.tileSize+CONFIG.tileSize/2, y*CONFIG.tileSize+CONFIG.tileSize/2)) { sampled++; if(getTerritory(x,y)===this.territoryId) count++; }
+        return this.cachedScore = sampled > 0 ? Math.round((count/sampled)*100*10)/10 : 0;
+    }
+    drawTerritory(camX, camY) {
+        if (!this.alive) return;
+        const tileS = CONFIG.tileSize * CONFIG.zoom;
+        const minX = Math.floor(Math.max(0, camX/CONFIG.tileSize)), maxX = Math.ceil(Math.min(gridSize, (camX+canvas.width/CONFIG.zoom)/CONFIG.tileSize));
+        const minY = Math.floor(Math.max(0, camY/CONFIG.tileSize)), maxY = Math.ceil(Math.min(gridSize, (camY+canvas.height/CONFIG.zoom)/CONFIG.tileSize));
+        ctx.fillStyle = this.color;
+        for (let x = minX; x < maxX; x++) for (let y = minY; y < maxY; y++) if (getTerritory(x, y) === this.territoryId) ctx.fillRect((x*CONFIG.tileSize-camX)*CONFIG.zoom, (y*CONFIG.tileSize-camY)*CONFIG.zoom, tileS+1, tileS+1);
+    }
+    drawEntity(camX, camY) {
+        if (!this.alive) return;
+        if (this.trail.length > 1) {
+            ctx.beginPath(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = CONFIG.playerSize * CONFIG.zoom; ctx.strokeStyle = this.trailColor;
+            ctx.moveTo((this.trail[0].x - camX) * CONFIG.zoom, (this.trail[0].y - camY) * CONFIG.zoom);
+            for (let i = 1; i < this.trail.length; i++) ctx.lineTo((this.trail[i].x - camX) * CONFIG.zoom, (this.trail[i].y - camY) * CONFIG.zoom);
+            ctx.lineTo((this.x - camX) * CONFIG.zoom, (this.y - camY) * CONFIG.zoom); ctx.stroke();
+        }
+        const sX = (this.x - camX) * CONFIG.zoom, sY = (this.y - camY) * CONFIG.zoom;
+        ctx.save(); ctx.translate(sX, sY); ctx.rotate(this.angle); 
+        ctx.fillStyle = this.color; ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 10;
+        const s = CONFIG.playerSize * CONFIG.zoom;
+        ctx.fillRect(-s/2, -s/2, s, s);
+        
+        // DRAW SKIN IMAGE OR ICON
+        if (this.id === 0 && SKINS[currentSkin]) {
+            const skin = SKINS[currentSkin];
+            if (skin.type === 'image' && skinImages[currentSkin]) {
+                try {
+                    ctx.drawImage(skinImages[currentSkin], -s/2, -s/2, s, s);
+                } catch(e){}
+            } else if (skin.type === 'icon') {
+                ctx.fillStyle = 'white';
+                ctx.font = `${s * 0.8}px Arial`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.shadowBlur = 0;
+                ctx.fillText(skin.icon, 0, 0);
+            }
+        }
+        
+        ctx.restore();
+        ctx.fillStyle = 'white'; ctx.font = `bold ${14 * CONFIG.zoom}px 'Nunito', Arial`; ctx.textAlign = 'center'; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 3;
+        ctx.fillText(this.name, sX, sY - 25 * CONFIG.zoom); ctx.shadowBlur = 0;
+    }
+}
+
+class Player extends Entity {
+    constructor() { super(0, CONFIG.colors.player, 'Player'); this.kills = 0; }
+    reset(name) {
+        this.name = name; this.color = CONFIG.colors.player; this.trailColor = this.lightenColor(this.color, 30);
+        this.x = mapCenterX; this.y = mapCenterY; this.angle = -Math.PI/2; this.trail = []; this.isOutside = false; this.lastSafePos = {x:this.x,y:this.y}; this.alive = true; this.kills = 0; this.createStartZone();
+    }
+    update() {
+        if (!gameRunning || !this.alive || gamePaused) return;
+        if (lastInputMethod === 'keyboard') { if(keys['a']||keys['arrowleft']) this.angle-=CONFIG.turnSpeed; if(keys['d']||keys['arrowright']) this.angle+=CONFIG.turnSpeed; }
+        else if (mouseMoving) {
+            const dx = (mousePos.x/CONFIG.zoom+camera.x) - this.x, dy = (mousePos.y/CONFIG.zoom+camera.y) - this.y;
+            let diff = Math.atan2(dy, dx) - this.angle;
+            while(diff < -Math.PI) diff += Math.PI*2; while(diff > Math.PI) diff -= Math.PI*2;
+            this.angle += diff * 0.15;
+        }
+        this.x += Math.cos(this.angle)*CONFIG.speed; this.y += Math.sin(this.angle)*CONFIG.speed; this.handleBoundary();
+        
+        // Collision with bots
+        for (let bot of bots) if (bot.alive && bot.isOutside && bot.trail.length > 5 && bot.checkTrailCollision(this.trail, this.isOutside)) { this.die(); return; }
+        for (let bot of bots) if (bot.alive && bot.isOutside && bot.trail.length > 5 && this.checkTrailCollision(bot.trail, bot.isOutside)) { bot.respawn(); this.kills++; totalKills++; checkDynamicMissions({kills:this.kills}); }
+
+        const { gx, gy } = worldToGrid(this.x, this.y);
+        const onTerritory = getTerritory(gx, gy) === this.territoryId;
+        if (!onTerritory) {
+            if (!this.isOutside) { this.trail = [{x:this.lastSafePos.x, y:this.lastSafePos.y}]; this.isOutside = true; }
+            const last = this.trail[this.trail.length-1];
+            if (!last || Math.hypot(this.x-last.x, this.y-last.y) > CONFIG.minTrailDist) this.trail.push({x:this.x, y:this.y});
+            if (this.trail.length > 20) for(let i=0; i<this.trail.length-15; i++) if(Math.hypot(this.x-this.trail[i].x, this.y-this.trail[i].y) < CONFIG.playerSize/2) { this.die(); return; }
+        } else {
+            this.lastSafePos = {x:this.x, y:this.y};
+            if (this.isOutside && this.trail.length > 2) { this.trail.push({x:this.x, y:this.y}); this.capture(); this.isOutside = false; this.trail = []; }
+        }
+        camera.x = this.x - (canvas.width/2)/CONFIG.zoom; camera.y = this.y - (canvas.height/2)/CONFIG.zoom;
+    }
+    async die() {
+        this.alive = false; gameRunning = false; stopAutoSave();
+        const score = this.calculateScore();
+        if (score > highScore) { highScore = Math.round(score); localStorage.setItem('paperio_highscore', highScore); document.getElementById('high-score').textContent = highScore + '%'; }
+        checkDynamicMissions({ score: score, kills: this.kills, died: true });
+        scoreDisplay.style.display = 'none'; leaderboard.style.display = 'none'; ingameSettingsBtn.style.display = 'none'; overlay.style.display = 'flex'; animateMenuBackground();
+        await saveProgress('game_over');
+    }
+}
+
+// ----------------------------------------------------
+// SMART BOT AI LOGIC (PLAYER-LIKE BEHAVIOR)
+// ----------------------------------------------------
+class Bot extends Entity {
+    constructor(id, color, name) { super(id, color, name); this.reset(); }
+    
+    reset() { 
+        this.spawn(player?player.x:mapCenterX, player?player.y:mapCenterY, 500); 
+        this.mode = 'expand';
+        this.targetAngle = Math.random() * Math.PI * 2;
+        this.timer = 0;
+        this.bravery = 30 + Math.random() * 50; // Randomize aggression
+    }
+    
+    respawn() { 
+        for(let x=0;x<gridSize;x++)for(let y=0;y<gridSize;y++)if(getTerritory(x,y)===this.territoryId)setTerritory(x,y,0); 
+        this.reset(); 
+        minimapNeedsUpdate=true; 
+    }
+    
+    // Scan for threats (enemies near my tail) and victims (enemies I can kill)
+    scan() {
+        let threat = null;
+        let victim = null;
+        let minThreatDist = 200; // Awareness radius
+        let minVictimDist = 300; // Attack radius
+
+        const potentialTargets = [player, ...bots].filter(e => e !== this && e.alive);
+
+        for (let other of potentialTargets) {
+            // Check if they are a threat to ME
+            if (this.isOutside && this.trail.length > 2) {
+                // If enemy head is close to any point on my trail
+                for (let p of this.trail) {
+                    const d = Math.hypot(other.x - p.x, other.y - p.y);
+                    if (d < minThreatDist) {
+                        threat = other;
+                        minThreatDist = d;
+                    }
+                }
+            }
+
+            // Check if they are a VICTIM for me
+            if (other.isOutside && other.trail.length > 2) {
+                // Find closest point on their trail
+                for (let p of other.trail) {
+                    const d = Math.hypot(this.x - p.x, this.y - p.y);
+                    if (d < minVictimDist) {
+                        victim = { entity: other, x: p.x, y: p.y }; // Target specific trail point
+                        minVictimDist = d;
+                    }
+                }
+            }
+        }
+        return { threat, victim };
+    }
+
+    update() {
+        if(!this.alive || gamePaused) return;
+
+        const {gx,gy} = worldToGrid(this.x,this.y);
+        const onTerritory = getTerritory(gx,gy)===this.territoryId;
+        const scanResult = this.scan();
+
+        // -- DECISION TREE --
+        
+        // 1. FLEE: Enemy is chasing my tail!
+        if (scanResult.threat) {
+            this.mode = 'flee';
+            // Run to nearest point we visited safely
+            const dx = this.lastSafePos.x - this.x;
+            const dy = this.lastSafePos.y - this.y;
+            this.targetAngle = Math.atan2(dy, dx);
+        }
+        // 2. ATTACK: Enemy vulnerable nearby!
+        else if (scanResult.victim) {
+            this.mode = 'attack';
+            const dx = scanResult.victim.x - this.x;
+            const dy = scanResult.victim.y - this.y;
+            this.targetAngle = Math.atan2(dy, dx);
+        }
+        // 3. RETURN: Trail getting too long
+        else if (this.isOutside && this.trail.length > this.bravery) {
+            this.mode = 'return';
+            const dx = this.lastSafePos.x - this.x;
+            const dy = this.lastSafePos.y - this.y;
+            this.targetAngle = Math.atan2(dy, dx);
+        }
+        // 4. EXPAND: Normal gameplay
+        else {
+            this.mode = 'expand';
+            this.timer--;
+            if (this.timer <= 0) {
+                this.timer = Math.random() * 20 + 10;
+                // Add jitter to look human
+                this.targetAngle += (Math.random() - 0.5) * 1.0; 
+            }
+            
+            // Soft boundary avoidance
+            const dist = Math.hypot(this.x - mapCenterX, this.y - mapCenterY);
+            if (dist > CONFIG.mapRadius - 150) {
+                this.targetAngle = Math.atan2(mapCenterY - this.y, mapCenterX - this.x);
+            }
+        }
+
+        // -- SMOOTH ROTATION --
+        let diff = this.targetAngle - this.angle;
+        while(diff < -Math.PI) diff += Math.PI*2;
+        while(diff > Math.PI) diff -= Math.PI*2;
+        // Turn faster if fleeing or attacking
+        const turnSpeed = (this.mode === 'flee' || this.mode === 'attack') ? 0.15 : 0.08;
+        this.angle += diff * turnSpeed;
+
+        // -- MOVEMENT --
+        this.x += Math.cos(this.angle)*CONFIG.botSpeed; 
+        this.y += Math.sin(this.angle)*CONFIG.botSpeed; 
+        this.handleBoundary();
+
+        // -- TRAIL LOGIC --
+        if(!onTerritory) {
+            if(!this.isOutside) { this.trail = [{x:this.lastSafePos.x,y:this.lastSafePos.y}]; this.isOutside=true; }
+            if(this.trail.length === 0 || Math.hypot(this.x-this.trail[this.trail.length-1].x, this.y-this.trail[this.trail.length-1].y)>CONFIG.minTrailDist) {
+                this.trail.push({x:this.x,y:this.y});
+            }
+        } else {
+            this.lastSafePos={x:this.x,y:this.y};
+            if(this.isOutside) { 
+                this.trail.push({x:this.x,y:this.y}); 
+                this.capture(); 
+                this.isOutside=false; 
+                this.trail=[]; 
+                // Randomly change bravery after a capture
+                this.bravery = 30 + Math.random() * 50;
+            }
+        }
+    }
+}
+
+function createBots() {
+    bots = [];
+    for (let i=0; i<CONFIG.botCount; i++) bots.push(new Bot(i+1, BOT_COLORS[i%BOT_COLORS.length], BOT_NAMES[i%BOT_NAMES.length]));
+}
+
+function drawMap() {
+    const cx = (mapCenterX - camera.x)*CONFIG.zoom, cy = (mapCenterY - camera.y)*CONFIG.zoom, r = CONFIG.mapRadius*CONFIG.zoom;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fillStyle = CONFIG.colors.mapBg; ctx.fill();
+    ctx.save(); ctx.clip();
+    ctx.strokeStyle = CONFIG.colors.grid; ctx.lineWidth = 1;
+    const gs = 50*CONFIG.zoom;
+    ctx.beginPath();
+    for(let x=-r; x<=r; x+=gs) { ctx.moveTo(cx+x, cy-r); ctx.lineTo(cx+x, cy+r); }
+    for(let y=-r; y<=r; y+=gs) { ctx.moveTo(cx-r, cy+y); ctx.lineTo(cx+r, cy+y); }
+    ctx.stroke(); ctx.restore();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.strokeStyle = CONFIG.colors.boundary; ctx.lineWidth=4*CONFIG.zoom; ctx.stroke();
+}
+
+function drawMinimap() {
+    const s = 150, sc = s/(CONFIG.mapRadius*2);
+    minimapCtx.clearRect(0,0,s,s);
+    minimapCtx.beginPath(); minimapCtx.arc(s/2,s/2,s/2-2,0,Math.PI*2); minimapCtx.fillStyle=CONFIG.colors.mapBg; minimapCtx.fill();
+    minimapCtx.save(); minimapCtx.clip();
+    const step = Math.max(1, Math.floor(gridSize/100));
+    for(let x=0;x<gridSize;x+=step)for(let y=0;y<gridSize;y+=step){
+        const t=getTerritory(x,y);
+        if(t>0) { minimapCtx.fillStyle = t===1?CONFIG.colors.player:(bots[t-2]?bots[t-2].color:'#fff'); minimapCtx.fillRect(x*CONFIG.tileSize*sc, y*CONFIG.tileSize*sc, Math.max(2, CONFIG.tileSize*sc*step), Math.max(2, CONFIG.tileSize*sc*step)); }
+    }
+    minimapCtx.restore();
+}
+
+function updateLeaderboard() {
+    const scores = [];
+    if(player && player.alive) scores.push({name:player.name, color:player.color, score:player.calculateScore()});
+    bots.forEach(b => { if(b.alive) scores.push({name:b.name, color:b.color, score:b.calculateScore()}); });
+    scores.sort((a,b)=>b.score-a.score);
+    leaderboardEntries.innerHTML = scores.slice(0,5).map(e => `<div class="leaderboard-entry"><div class="leaderboard-color" style="background:${e.color}"></div><span class="leaderboard-name">${e.name}</span><span class="leaderboard-score">${e.score.toFixed(1)}%</span></div>`).join('');
+    if(player && player.alive) scoreDisplay.textContent = player.calculateScore().toFixed(1)+'%';
+}
+
+function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = CONFIG.colors.bg; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (gameRunning && !gamePaused) { player.update(); bots.forEach(b=>b.update()); }
+    if (gameRunning) {
+        drawMap();
+        player.drawTerritory(camera.x, camera.y); bots.forEach(b=>b.drawTerritory(camera.x, camera.y));
+        bots.forEach(b=>b.drawEntity(camera.x, camera.y)); player.drawEntity(camera.x, camera.y);
+        drawMinimap(); updateLeaderboard();
+    }
+    requestAnimationFrame(gameLoop);
+}
+
+async function startGame() {
+    const name = playerNameInput.value.trim() || 'Player';
+    localStorage.setItem('paperio_name', name);
+    gamesPlayed++; localStorage.setItem('paperio_games', gamesPlayed); document.getElementById('games-played').textContent = gamesPlayed;
+    
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    CONFIG.botSpeed = CONFIG.speed * 0.875;
+    initGridData();
+    player = new Player(); player.reset(name);
+    if (SKINS[currentSkin]) { CONFIG.colors.player = SKINS[currentSkin].color; player.color = CONFIG.colors.player; }
+    createBots();
+    camera.x = player.x - (canvas.width/2)/CONFIG.zoom; camera.y = player.y - (canvas.height/2)/CONFIG.zoom;
+    
+    overlay.style.display = 'none'; scoreDisplay.style.display = 'block'; leaderboard.style.display = 'block'; minimap.style.display = 'block'; ingameSettingsBtn.style.display = 'block';
+    gameRunning = true; gamePaused = false;
+    startAutoSave(); await saveProgress('game_start');
+}
+
+window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; lastInputMethod = 'keyboard'; if(e.key==='Escape'&&gameRunning) { gamePaused=!gamePaused; pauseOverlay.style.display=gamePaused?'flex':'none'; } });
+window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+window.addEventListener('mousemove', (e) => { mousePos.x=e.clientX; mousePos.y=e.clientY; lastInputMethod='mouse'; if(Math.hypot(mousePos.x-lastMousePos.x, mousePos.y-lastMousePos.y)>2){mouseMoving=true; lastMousePos={x:mousePos.x,y:mousePos.y}; if(mouseStopTimer)clearTimeout(mouseStopTimer); mouseStopTimer=setTimeout(()=>mouseMoving=false,100);} });
+window.addEventListener('resize', () => { canvas.width=window.innerWidth; canvas.height=window.innerHeight; if(!gameRunning) initMenuBackground(); });
+startBtn.onclick = startGame;
+playerNameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') startGame(); });
+
+async function init() {
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight; minimap.style.display = 'none';
+    initMenuBackground();
+    
+    await initializeAuth(); // Checks admin
+    await loadGameConfig(); // Loads skins/missions from Firebase
+    initSkins();
+    initDailyReward();
+    
+    loadingOverlay.style.display = 'none';
+    animateMenuBackground();
+    gameLoop();
+}
+
+init();
+    </script>
+</body>
+</html>

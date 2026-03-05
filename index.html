@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <title>Game Paradise - Home</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="icon" type="image/png" href="/icon/favicon.png">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        :root {
+            --bg: #020617;
+            --sidebar-bg: #010409;
+            --card-bg: #0f172a;
+            --primary: #2563eb;
+            --accent: #60a5fa;
+            --text-dim: #94a3b8;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            margin: 0; font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg); color: white;
+            display: flex; height: 100vh; overflow: hidden;
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar {
+            width: 260px; min-width: 260px; background: var(--sidebar-bg);
+            padding: 20px; display: flex; flex-direction: column; border-right: 1px solid #1e293b;
+            height: 100vh; z-index: 50; transition: transform 0.3s ease;
+        }
+        
+        .logo { font-size: 22px; font-weight: bold; color: var(--accent); margin-bottom: 25px; text-align: center; flex-shrink: 0; }
+
+        .search-box { flex-shrink: 0; }
+        .search-box input {
+            width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #1e293b;
+            background: #0f172a; color: white; margin-bottom: 20px; outline: none;
+        }
+
+        .sidebar-menu {
+            flex: 1; overflow-y: auto; margin-bottom: 10px; padding-right: 5px;
+        }
+        .sidebar-menu::-webkit-scrollbar { width: 5px; }
+        .sidebar-menu::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+
+        .category-btn {
+            padding: 12px; border-radius: 10px; margin-bottom: 5px; cursor: pointer;
+            transition: 0.2s; display: flex; align-items: center; gap: 10px; color: var(--text-dim);
+        }
+        .category-btn:hover { background: #1e293b; color: white; }
+        .category-btn.active { background: var(--primary); color: white; font-weight: bold; }
+        
+        /* Sidebar Footer Buttons */
+        .sidebar-footer { flex-shrink: 0; border-top: 1px solid #1e293b; padding-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+
+        .badge {
+            background: #ef4444; color: white; font-size: 11px; font-weight: bold;
+            padding: 2px 6px; border-radius: 10px; margin-left: auto;
+        }
+
+        /* --- MAIN CONTENT --- */
+        .main { flex: 1; padding: 30px; overflow-y: auto; background: radial-gradient(circle at top right, #0f172a, #020617); position: relative; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        
+        .title-container { display: flex; align-items: center; gap: 15px; }
+        .section-title { font-size: 24px; margin: 0; color: white; }
+        
+        /* Menu Button (Hidden on Desktop) */
+        .menu-btn {
+            display: none; background: none; border: none; 
+            color: white; font-size: 24px; cursor: pointer; padding: 0;
+        }
+
+        /* Overlay for Mobile Sidebar */
+        .sidebar-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.6); 
+            z-index: 40; display: none; backdrop-filter: blur(2px);
+        }
+
+        .auth-btn { background: var(--primary); border: none; padding: 10px 18px; border-radius: 10px; color: white; cursor: pointer; font-weight: bold; white-space: nowrap; }
+        .admin-btn { background: #1e293b; margin-right: 10px; border: 1px solid #334155; color: white; }
+
+        /* --- GAME GRID --- */
+        .game-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 20px; }
+        
+        .game-card {
+            background: var(--card-bg); border-radius: 15px; overflow: hidden;
+            transition: 0.3s; border: 1px solid #1e293b; cursor: pointer;
+            position: relative;
+        }
+        .game-card:hover { transform: translateY(-8px); border-color: var(--primary); box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+        
+        .game-card img { width: 100%; height: 120px; object-fit: cover; display: block; }
+        
+        .game-card h3 { 
+            margin: 0; padding: 12px; font-size: 14px; 
+            display: flex; align-items: center; justify-content: space-between; 
+            background: rgba(0,0,0,0.3);
+            color: white;
+        }
+
+        .star { font-size: 20px; color: rgba(255,255,255,0.2); transition: 0.2s; z-index: 2; }
+        .star.fav { color: #fbbf24; text-shadow: 0 0 5px rgba(251, 191, 36, 0.5); }
+        .save-icon { color: var(--accent); font-size: 12px; margin-right: 5px; opacity: 0.8; }
+        .info-btn { font-size: 18px; color: var(--text-dim); margin-right: 8px; cursor: pointer; transition: 0.2s; }
+        .info-btn:hover { color: white; }
+
+        /* --- SKELETON LOADING --- */
+        .skeleton { animation: pulse 1.5s infinite; background: #1e293b; width: 100%; height: 100%; border-radius: 15px; }
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+
+        /* --- MODALS & TOASTS --- */
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 10000; padding: 20px; }
+        .modal-box { 
+            background: #0f172a; padding: 30px; border-radius: 20px; width: 400px; max-width: 100%;
+            text-align: center; border: 1px solid #1e293b; overflow-x: hidden;
+        }
+        .modal-box input { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 10px; border: 1px solid #334155; background: #020617; color: white; }
+        .modal-box button { width: 100%; padding: 12px; border-radius: 10px; border: none; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        
+        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 99999; }
+        .toast { background: #1e293b; color: white; padding: 15px 20px; border-radius: 12px; margin-bottom: 10px; border-left: 5px solid var(--primary); animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+        .update-item { text-align: left; background: #1e293b; padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #334155; }
+        .update-date { font-size: 11px; color: var(--accent); margin-bottom: 5px; display:block; }
+
+        /* --- MOBILE RESPONSIVE CSS --- */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed; top: 0; left: 0; bottom: 0;
+                transform: translateX(-100%);
+                width: 280px; box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+            }
+            .sidebar.active { transform: translateX(0); }
+            
+            .main { padding: 20px 15px; }
+            .menu-btn { display: block; }
+            .sidebar-overlay.active { display: block; }
+            
+            .game-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; }
+            .section-title { font-size: 20px; }
+            
+            .topbar { gap: 10px; }
+            .auth-btn { padding: 8px 12px; font-size: 14px; }
+            
+            /* Admin knop zichtbaar houden op mobiel als de JS hem display block geeft */
+            /* We hebben de regel die de knop verbergt hier verwijderd */
+        }
+    </style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<div id="sidebarOverlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+<div id="sidebar" class="sidebar">
+  <div class="logo">🎮 Game Paradise</div>
+  
+  <div class="search-box">
+    <input 
+        id="searchInput" 
+        type="search" 
+        placeholder="Zoek games..." 
+        oninput="renderGames()"
+    >
+  </div>
+
+  <div class="sidebar-menu">
+      <div class="category-btn active" data-cat="all" onclick="setFilter('all', this); toggleSidebar(false)">Alle games</div>
+      <div class="category-btn" data-cat="favorites" onclick="setFilter('favorites', this); toggleSidebar(false)">⭐ Favorieten</div>
+      <div style="height: 1px; background: #1e293b; margin: 10px 0;"></div>
+      <div id="categoryList"></div>
+  </div>
+
+  <div class="sidebar-footer">
+      <div class="category-btn" onclick="openUpdatesModal(); toggleSidebar(false)" style="border: 1px solid #eab308; color: #facc15; justify-content: center;">
+         Updates
+      </div>
+
+      <div class="category-btn" onclick="document.getElementById('supportModal').style.display='flex'; toggleSidebar(false)" style="border: 1px solid #10b981; color: #34d399; justify-content: center;">
+         Support
+      </div>
+
+      <div class="category-btn" onclick="checkChatAccess()" style="border: 1px solid #2563eb; color: #60a5fa; justify-content: center;">
+          Chat
+          <span id="chatBadge" class="badge" style="display:none">0</span>
+      </div>
+  </div>
+</div>
+
+<div class="main">
+    <div class="topbar">
+        <div class="title-container">
+            <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+            <h2 id="sectionTitle" class="section-title">Alle Games</h2>
+        </div>
+        <div>
+            <button id="adminBtn" class="auth-btn admin-btn" style="display:none" onclick="location.href='admin.html'">Admin</button>
+            <button id="authBtn" class="auth-btn">Inloggen</button>
+        </div>
+    </div>
+    <div id="gameGrid" class="game-grid">
+        <div class="game-card" style="height:165px"><div class="skeleton"></div></div>
+        <div class="game-card" style="height:165px"><div class="skeleton"></div></div>
+        <div class="game-card" style="height:165px"><div class="skeleton"></div></div>
+        <div class="game-card" style="height:165px"><div class="skeleton"></div></div>
+    </div>
+</div>
+
+<div id="updatesModal" class="modal">
+    <div class="modal-box" style="width: 500px; max-height: 80vh; overflow-y: auto;">
+        <h2 style="color: #facc15;">Laatste Updates</h2>
+        <div id="updatesList" style="margin-top: 20px;">Laden...</div>
+        <button onclick="document.getElementById('updatesModal').style.display='none'" style="background: transparent; color: var(--text-dim);">Sluiten</button>
+    </div>
+</div>
+
+<div id="loginModal" class="modal">
+    <div class="modal-box">
+        <h2>Inloggen</h2>
+        <input id="emailInput" type="email" name="email" autocomplete="username" placeholder="E-mail">
+        <input id="passwordInput" type="password" name="password" autocomplete="current-password" placeholder="Wachtwoord">
+        
+        <button id="loginSubmit" style="background: var(--primary); color: white;">Inloggen</button>
+        <button id="registerSubmit" style="background: #16a34a; color: white;">Account aanvragen</button>
+        <button id="forgotPasswordSubmit" style="background: #334155; color: white;">Wachtwoord vergeten</button>
+        <button onclick="document.getElementById('loginModal').style.display='none'" style="background:transparent; color: var(--text-dim);">Annuleren</button>
+    </div>
+</div>
+
+<div id="favModal" class="modal">
+    <div class="modal-box">
+        <div style="font-size: 40px; margin-bottom: 10px;">⭐</div>
+        <h2>Oeps, niet ingelogd!</h2>
+        <p style="color: #94a3b8; margin-bottom: 20px;">Je moet ingelogd zijn om favoriete games op te slaan.</p>
+        <button onclick="openLoginFromFav()" style="background: var(--primary); color: white;">Nu Inloggen</button>
+        <button onclick="document.getElementById('favModal').style.display='none'" style="background:transparent; color: var(--text-dim);">Laat maar</button>
+    </div>
+</div>
+
+<div id="infoModal" class="modal">
+    <div class="modal-box">
+        <h2 id="infoTitle" style="color: var(--accent);">Game Info</h2>
+        <p id="infoText" style="color: white; line-height: 1.6; margin: 20px 0; text-align: left;"></p>
+        <button onclick="document.getElementById('infoModal').style.display='none'" style="background: var(--primary); color: white;">Sluiten</button>
+    </div>
+</div>
+
+<div id="registerModal" class="modal">
+    <div class="modal-box" style="width: 500px; max-height: 90vh;">
+        <iframe data-tally-src="https://tally.so/embed/yPYeEd?alignLeft=1&hideTitle=1&transparentBackground=1&dynamicHeight=1" width="100%" height="500" frameborder="0" title="Account aanvraag"></iframe>
+        <button onclick="document.getElementById('registerModal').style.display='none'" style="margin-top:20px; background: #1e293b; color: white;">Sluiten</button>
+    </div>
+</div>
+<div id="forgotPasswordModal" class="modal">
+    <div class="modal-box" style="width: 500px;">
+        <iframe data-tally-src="https://tally.so/embed/gDGQPM?alignLeft=1&hideTitle=1&transparentBackground=1&dynamicHeight=1" width="100%" height="424" frameborder="0" title="Wachtwoord vergeten"></iframe>
+        <button onclick="document.getElementById('forgotPasswordModal').style.display='none'" style="margin-top:20px; background: #1e293b; color: white;">Sluiten</button>
+    </div>
+</div>
+<div id="supportModal" class="modal">
+    <div class="modal-box" style="width: 500px;">
+        <iframe data-tally-src="https://tally.so/embed/jaPkda?alignLeft=1&hideTitle=1&transparentBackground=1&dynamicHeight=1" width="100%" height="424" frameborder="0" title="Support"></iframe>
+        <button onclick="document.getElementById('supportModal').style.display='none'" style="margin-top:20px; background: #1e293b; color: white;">Sluiten</button>
+    </div>
+</div>
+<script src="https://tally.so/widgets/embed.js"></script>
+
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyA0K4geAuueVfiItB_98-LkqRTnpYNUNvM",
+    authDomain: "gameparadise-80490.firebaseapp.com",
+    projectId: "gameparadise-80490",
+    storageBucket: "gameparadise-80490.firebasestorage.app",
+    messagingSenderId: "335620903527",
+    appId: "1:335620903527:web:1bc1e01a386bf6e4e7fac2"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+const ADMIN_EMAILS = ["someoeneheilig@gmail.com", "melle1337k@gmail.com"];
+let currentUser = null;
+let favorites = {};
+let allGames = {};
+let currentFilter = "all";
+let gamesLoading = true;
+
+// --- MOBIELE MENU FUNCTIE ---
+function toggleSidebar(forceOpen = null) {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    
+    if (forceOpen === false) {
+        sidebar.classList.remove('active');
+        overlay.classList.remove('active');
+    } else {
+        sidebar.classList.toggle('active');
+        overlay.classList.toggle('active');
+    }
+}
+
+function notify(msg, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.style.borderLeftColor = type === 'success' ? '#22c55e' : '#ef4444';
+    t.innerHTML = msg;
+    container.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 3000);
+}
+
+auth.onAuthStateChanged(user => {
+    currentUser = user;
+    if (user) {
+        document.getElementById("authBtn").textContent = "Uitloggen";
+        // Check of het een admin is, zo ja: laat knop zien
+        document.getElementById("adminBtn").style.display = ADMIN_EMAILS.includes(user.email.toLowerCase()) ? "inline-block" : "none";
+        loadFavorites();
+        initChatBadge(); 
+    } else {
+        document.getElementById("authBtn").textContent = "Inloggen";
+        document.getElementById("adminBtn").style.display = "none";
+        favorites = {};
+        renderGames();
+        document.getElementById('chatBadge').style.display = 'none';
+    }
+});
+
+// Chat Badge Listener
+function initChatBadge() {
+    if(!currentUser) return;
+    const badge = document.getElementById('chatBadge');
+    
+    db.collection("chats").orderBy("timestamp", "desc").limit(1).onSnapshot(s => {
+        if(!s.empty && s.docs[0].data().uid !== currentUser.uid) {
+            badge.innerText = "!"; 
+            badge.style.display = 'inline-block';
+        }
+    });
+}
+
+// Updates Laden
+function openUpdatesModal() {
+    document.getElementById('updatesModal').style.display = 'flex';
+    const list = document.getElementById('updatesList');
+    list.innerHTML = '<div class="skeleton" style="height:100px;"></div>';
+    
+    db.collection("updates").orderBy("timestamp", "desc").limit(10).get().then(snap => {
+        list.innerHTML = "";
+        if(snap.empty) {
+            list.innerHTML = "Nog geen updates.";
+            return;
+        }
+        snap.forEach(doc => {
+            const d = doc.data();
+            const date = d.timestamp ? d.timestamp.toDate().toLocaleDateString('nl-NL') : 'Onbekend';
+            list.innerHTML += `
+                <div class="update-item">
+                    <span class="update-date"> ${date}</span>
+                    <h3 style="margin:0 0 5px 0; color:white;">${d.title}</h3>
+                    <p style="margin:0; color:#cbd5e1; font-size:14px;">${d.content}</p>
+                </div>
+            `;
+        });
+    });
+}
+
+document.getElementById("authBtn").onclick = () => {
+    if (currentUser) {
+        auth.signOut().then(() => notify("Succesvol uitgelogd!"));
+    } else {
+        document.getElementById("loginModal").style.display = "flex";
+    }
+};
+
+function openLoginFromFav() {
+    document.getElementById("favModal").style.display = "none";
+    document.getElementById("loginModal").style.display = "flex";
+}
+
+document.getElementById("loginSubmit").onclick = () => {
+    const email = document.getElementById("emailInput").value;
+    const pass = document.getElementById("passwordInput").value;
+    auth.signInWithEmailAndPassword(email, pass)
+    .then(() => { document.getElementById("loginModal").style.display = "none"; notify("✅ Ingelogd!"); })
+    .catch(() => notify("❌ Fout gegevens", "danger"));
+};
+
+document.getElementById("registerSubmit").onclick = () => {
+    document.getElementById("loginModal").style.display = "none";
+    document.getElementById("registerModal").style.display = "flex";
+};
+
+document.getElementById("forgotPasswordSubmit").onclick = () => {
+    document.getElementById("loginModal").style.display = "none";
+    document.getElementById("forgotPasswordModal").style.display = "flex";
+};
+
+function loadGames() {
+    gamesLoading = true;
+    renderGames(); 
+    db.collection("games").onSnapshot(snap => {
+        allGames = {};
+        snap.forEach(doc => allGames[doc.id] = doc.data());
+        gamesLoading = false;
+        renderGames();
+    });
+}
+
+function loadCategories() {
+    db.collection("categories").onSnapshot(snap => {
+        const list = document.getElementById("categoryList");
+        list.innerHTML = "";
+        snap.forEach(doc => {
+            const btn = document.createElement("div");
+            btn.className = "category-btn";
+            btn.innerHTML = ` ${doc.data().name}`;
+            btn.onclick = () => {
+                setFilter(doc.id, btn);
+                toggleSidebar(false); // Sluit menu op mobiel na klik
+            };
+            list.appendChild(btn);
+        });
+    });
+}
+
+function loadFavorites() {
+    if(!currentUser) return;
+    db.collection("users").doc(currentUser.uid).collection("favorites").onSnapshot(snap => {
+        favorites = {};
+        snap.forEach(doc => favorites[doc.id] = true);
+        renderGames();
+    });
+}
+
+function setFilter(cat, el) {
+    if (cat === 'favorites' && !currentUser) {
+        document.getElementById("favModal").style.display = "flex";
+        return;
+    }
+    currentFilter = cat;
+    document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
+    el.classList.add('active');
+    
+    let title = el.innerText.replace('⭐ ', '');
+    if(cat === 'all') title = "Alle Games";
+    document.getElementById("sectionTitle").textContent = title;
+    
+    renderGames();
+}
+
+function showInfo(id, e) {
+    e.stopPropagation();
+    const g = allGames[id];
+    document.getElementById("infoTitle").innerText = g.title;
+    document.getElementById("infoText").innerText = g.infoText || "Geen informatie.";
+    document.getElementById("infoModal").style.display = "flex";
+}
+
+function toggleFavorite(id, e) {
+    e.stopPropagation();
+    if (!currentUser) { document.getElementById("favModal").style.display = "flex"; return; }
+    const ref = db.collection("users").doc(currentUser.uid).collection("favorites").doc(id);
+    if (favorites[id]) ref.delete().then(() => notify("🗑️ Verwijderd uit favorieten", "danger"));
+    else ref.set(allGames[id]).then(() => notify("⭐ Toegevoegd aan favorieten"));
+}
+
+function renderGames() {
+    const grid = document.getElementById("gameGrid");
+    
+    // LOADING STATE 
+    if(gamesLoading) {
+        grid.innerHTML = "";
+        for(let i=0; i<8; i++) {
+            grid.innerHTML += `<div class="game-card" style="height:165px; cursor:default; border-color:transparent;"><div class="skeleton"></div></div>`;
+        }
+        return;
+    }
+
+    const search = document.getElementById("searchInput").value.toLowerCase();
+    grid.innerHTML = "";
+    
+    Object.entries(allGames).forEach(([id, g]) => {
+        const isFav = favorites[id];
+        
+        // Filter Logic
+        if (currentFilter === "favorites" && !isFav) return;
+        
+        if (currentFilter !== "all" && currentFilter !== "favorites") {
+            if (Array.isArray(g.categories)) {
+                if (!g.categories.includes(currentFilter)) return;
+            } else {
+                if (g.category !== currentFilter) return;
+            }
+        }
+
+        if (search && !g.title.toLowerCase().includes(search)) return;
+
+        const card = document.createElement("div");
+        card.className = "game-card";
+        card.innerHTML = `
+            <img src="${g.image}" loading="lazy">
+            <h3>
+                <span>${g.hasSave ? '<span class="save-icon">💾</span>' : ''}${g.title}</span>
+                <div style="display: flex; align-items: center;">
+                    ${g.hasInfo ? `<span class="info-btn" onclick="showInfo('${id}', event)">❓</span>` : ''}
+                    <span class="star ${isFav ? 'fav' : ''}" onclick="toggleFavorite('${id}', event)">★</span>
+                </div>
+            </h3>
+        `;
+        card.onclick = () => location.href = g.link;
+        grid.appendChild(card);
+    });
+}
+
+// Event listener aanpassen zodat games ook updaten bij typen (deze bestond al, maar even expliciet houden)
+document.getElementById("searchInput").oninput = renderGames;
+
+loadGames();
+loadCategories();
+
+function checkChatAccess() {
+    if (!currentUser) {
+        notify("❌ Je moet ingelogd zijn!");
+        setTimeout(() => document.getElementById('loginModal').style.display = 'flex', 1000);
+    } else {
+        location.href = 'chat.html';
+    }
+}
+</script>
+</body>
+</html>

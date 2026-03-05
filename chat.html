@@ -912,7 +912,7 @@ function setupListener(id, name, pic, type, ref) {
         cData.timestamp = time;
         
         // Only mark as unread if chat is NOT active OR page is hidden
-        if (activeChatId === id && !document.hidden) {
+        if (activeChatId === id && !document.hasFocus()) {
             // Chat is open and visible - mark as read
             if (time > lastRead) {
                 readStatus.set(id, time);
@@ -1766,7 +1766,7 @@ function notify(title, body, icon, chatId, type) {
         box.appendChild(t); setTimeout(()=>t.remove(), 4000);
     }
     // Veilige check voor Apple apparaten:
-if("Notification" in window && Notification.permission === "granted" && document.hidden) {
+if("Notification" in window && Notification.permission === "granted" && document.hasFocus()) {
     const n = new Notification(title, { body: body, icon: icon || "" });
     n.onclick = function() { window.focus(); this.close(); if(chatId) openChat(chatId, title, icon, type); };
 }

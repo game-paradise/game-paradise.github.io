@@ -78,6 +78,7 @@
     <button class="nav-btn" id="btn-chat" onclick="showTab('chat')">💬 Chat Beheer</button>
     <button class="nav-btn" id="btn-tasks" onclick="showTab('tasks')">✅ Ideeën & Taken</button>
     <button class="nav-btn" id="btn-admin" onclick="showTab('admin')">⚙️ Administratie</button>
+    <button class="nav-btn" id="btn-banned" onclick="showTab('banned')">🚫 Gebanned Woorden</button>
     
     <div style="margin-top: auto;">
         <button class="btn" style="width:100%; background:#1e293b; color:white; margin-bottom:10px" onclick="location.href='index.html'">🌐 Bekijk Site</button>
@@ -207,6 +208,18 @@
                 <button class="btn success" onclick="addTaskCategory()">Toevoegen</button>
             </div>
             <div id="taskCategoriesList" style="margin-top:10px;"></div>
+        </div>
+    </div>
+
+    <div id="bannedSection" class="section">
+        <div class="card">
+            <h3>🚫 Gebanned Namen / Woorden</h3>
+            <p style="color:#94a3b8; margin-bottom:15px;">Deze woorden mogen niet gebruikt worden in chatnamen. Ze worden automatisch geblokkeerd.</p>
+            <div style="display:flex; gap:10px; align-items:end;">
+                <input id="bannedWord" placeholder="Woord toevoegen..." style="flex:1;">
+                <button class="btn success" onclick="addBannedWord()">Toevoegen</button>
+            </div>
+            <div id="bannedWordsList" style="margin-top:20px;"></div>
         </div>
     </div>
 
@@ -769,21 +782,72 @@ function loadAdminData() {
             if (!adminData.disabled) adminData.disabled = [];
             if (!adminData.deleted) adminData.deleted = [];
             if (!adminData.inactive) adminData.inactive = [];
+            if (!adminData.bannedWords) adminData.bannedWords = [];
             renderWarnings();
             renderDisabled();
             renderDeleted();
             renderInactive();
+            renderBannedWords();
             loadTaskCategories();
         } else {
-            adminData = { warnings: [], disabled: [], deleted: [], inactive: [], taskCategories: ['chat', 'homepage', 'admin', 'games'] };
+            adminData = { warnings: [], disabled: [], deleted: [], inactive: [], taskCategories: ['chat', 'homepage', 'admin', 'games'], bannedWords: [] };
             db.collection("admin").doc("settings").set(adminData).then(() => {
                 renderWarnings();
                 renderDisabled();
                 renderDeleted();
                 renderInactive();
+                renderBannedWords();
                 loadTaskCategories();
             });
         }
+    });
+}
+
+/* ==================== GEBANNED WOORDEN ==================== */
+function renderBannedWords() {
+    const list = document.getElementById('bannedWordsList');
+    const words = adminData.bannedWords || [];
+    
+    if (words.length === 0) {
+        list.innerHTML = '<p style="color:#64748b;">Nog geen gebanned woorden.</p>';
+        return;
+    }
+    
+    list.innerHTML = words.map((w, idx) => `
+        <span style="display:inline-block; background:#1e293b; padding:8px 12px; border-radius:8px; margin:5px; font-size:14px; border:1px solid #334155;">
+            ${escapeHtml(w)}
+            <span style="color:#ef4444; cursor:pointer; margin-left:8px; font-weight:bold;" onclick="deleteBannedWord(${idx})">×</span>
+        </span>
+    `).join('');
+}
+
+function addBannedWord() {
+    const word = document.getElementById('bannedWord').value.trim().toLowerCase();
+    if (!word) return notify("Voer een woord in!");
+    
+    const bannedWords = adminData.bannedWords || [];
+    if (bannedWords.includes(word)) return notify("Woord is al gebanned!");
+    
+    bannedWords.push(word);
+    adminData.bannedWords = bannedWords;
+    
+    db.collection("admin").doc("settings").update({ bannedWords }).then(() => {
+        notify("Woord gebanned!");
+        document.getElementById('bannedWord').value = "";
+        renderBannedWords();
+    });
+}
+
+function deleteBannedWord(idx) {
+    if (!confirm("Woord verwijderen uit banned list?")) return;
+    
+    const bannedWords = adminData.bannedWords || [];
+    bannedWords.splice(idx, 1);
+    adminData.bannedWords = bannedWords;
+    
+    db.collection("admin").doc("settings").update({ bannedWords }).then(() => {
+        notify("Woord verwijderd!");
+        renderBannedWords();
     });
 }
 

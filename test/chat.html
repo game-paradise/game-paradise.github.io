@@ -620,8 +620,14 @@ document.addEventListener('keydown', (e) => {
 });
 
 auth.onAuthStateChanged(u => {
-    if (u) { user = u; checkSetup(); startPresenceSystem(); }
-    else { location.href = 'index.html'; }
+    if (u) { 
+        user = u; 
+        // We roepen checkSetup aan, die op zijn beurt weer initApp() start
+        checkSetup(); 
+        startPresenceSystem(); 
+    } else { 
+        location.href = 'index.html'; 
+    }
 });
 
 function isAdmin() {
@@ -629,6 +635,7 @@ function isAdmin() {
 }
 
 function startPresenceSystem() {
+    if(!user) return;
     updatePresence('online');
     setInterval(() => { updatePresence('online'); }, 60000);
     window.addEventListener('beforeunload', () => {
@@ -636,19 +643,39 @@ function startPresenceSystem() {
         if(activeChatId) updateTyping(false);
     });
 }
-function updatePresence(status) { if(user) db.collection("users").doc(user.uid).update({ status: status, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }); }
+
+function updatePresence(status) { 
+    if(user) db.collection("users").doc(user.uid).update({ 
+        status: status, 
+        lastSeen: firebase.firestore.FieldValue.serverTimestamp() 
+    }); 
+}
 
 async function checkSetup() {
-    const doc = await db.collection("users").doc(user.uid).get();
-    if (!doc.exists || !doc.data().name) { document.getElementById('setupOverlay').style.display = 'flex'; }
-else {
-    document.getElementById('setupOverlay').style.display = 'none';
-    // Veilige check voor Apple apparaten:
-    if ("Notification" in window && Notification.permission === "default") {
-        Notification.requestPermission();
+    try {
+        const doc = await db.collection("users").doc(user.uid).get();
+        if (!doc.exists || !doc.data().name) { 
+            document.getElementById('setupOverlay').style.display = 'flex'; 
+        } else {
+            document.getElementById('setupOverlay').style.display = 'none';
+            
+            // Veilig voor iPad Safari
+            if ("Notification" in window && Notification.permission === "default") {
+                Notification.requestPermission();
+            }
+            
+            // LAAD VERBODEN WOORDEN EN START DE APP
+            await loadBannedWords(); 
+            if (typeof initApp === "function") {
+                initApp(); 
+            } else {
+                console.error("Fout: De functie initApp() is niet gevonden in de rest van de code.");
+            }
+        }
+    } catch (error) {
+        console.error("Fout in checkSetup:", error);
     }
-    initApp();
-}
+} // <--- Deze accolade sloot je script af!
 
 function initApp() {
     db.collection("users").doc(user.uid).onSnapshot(d => {

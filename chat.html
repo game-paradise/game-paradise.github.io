@@ -10,6 +10,9 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+<script>eruda.init();</script>
     
     <style>
         :root {
@@ -200,7 +203,7 @@
         .quoted-user { font-weight: bold; color: var(--accent); margin-bottom: 2px; }
         .quoted-text { color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        .msg img.msg-img-content { max-width: 350px; max-height: 350px; width: 100%; border-radius: 8px; margin-top: 5px; cursor: pointer; object-fit: cover; }
+        .msg img.msg-img-content { max-width: 350px; max-height: 350px; width: 100%; border-radius: 8px; margin-top: 5px; cursor: pointer; object-fit: contain; }
         .msg .sender { font-size: 10px; color: var(--accent); font-weight: bold; margin-bottom: 2px; display: block; }
         
         .msg-footer { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 4px; }
@@ -297,6 +300,46 @@
             
             .modal-box { padding: 20px; }
         }
+        
+        .emoji-tabs { display: flex; }
+        .emoji-tab {
+            flex: 1; padding: 12px; text-align: center; cursor: pointer;
+            font-size: 20px; opacity: 0.6; transition: 0.2s;
+        }
+        .emoji-tab.active { opacity: 1; background: #334155; }
+        
+        .emoji-dropdown {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            width: 350px;
+            max-width: 90vw;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.5);
+            margin-bottom: 10px;
+            z-index: 1000;
+            overflow: hidden;
+        }
+        
+        @media (max-width: 768px) {
+            .emoji-dropdown { width: 300px; left: -120px; }
+        }
+        
+        .emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; padding: 10px; }
+        .emoji-item { font-size: 24px; cursor: pointer; text-align: center; padding: 5px; border-radius: 5px; transition: 0.1s; }
+        .emoji-item:hover { background: #334155; transform: scale(1.2); }
+        
+        .emoji-categories { display: flex; gap: 5px; padding: 8px; background: #1e293b; overflow-x: auto; border-bottom: 1px solid #334155; }
+        .emoji-cat-btn { padding: 8px 12px; font-size: 16px; cursor: pointer; border-radius: 5px; white-space: nowrap; }
+        .emoji-cat-btn.active { background: #334155; }
+        
+        .gif-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 10px; }
+        .gif-item { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform 0.1s; }
+        .gif-item:hover { transform: scale(1.05); border: 2px solid var(--accent); }
+        
+        .emoji-search { width: 100%; padding: 8px; margin: 8px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -312,7 +355,7 @@
 
 <div id="imageModal" class="modal" style="z-index: 5000;" onclick="if(event.target===this) document.getElementById('imageModal').style.display='none'">
     <div style="position:relative; max-width:90%; max-height:90vh; text-align:center;">
-        <img id="imgViewer" style="max-width:100%; max-height:80vh; border-radius:8px; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+        <img id="imgViewer" style="max-width:100%; max-height:80vh; border-radius:8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); object-fit: contain;">
         <div style="margin-top:15px; display:flex; gap:10px; justify-content:center;">
             <a id="imgDownload" href="#" download="afbeelding.jpg" class="btn">Downloaden</a>
             <button class="btn btn-danger" onclick="document.getElementById('imageModal').style.display='none'">Sluiten</button>
@@ -390,7 +433,7 @@
         
         <div class="chat-messages" id="chatMessages">
             <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; opacity:0.8;">
-                <img src="https://game-paradise.github.io/icon/favicon.png" style="width:100px; height:100px; margin-bottom:15px; border-radius:15px; box-shadow:0 0 20px rgba(37, 99, 235, 0.3);">
+                <img src="https://jappie716.github.io/icon/favicon.png" style="width:100px; height:100px; margin-bottom:15px; border-radius:15px; box-shadow:0 0 20px rgba(37, 99, 235, 0.3);">
                 <h2 style="color:white; margin:0 0 10px 0;">Game Paradise chat</h2>
                 <p style="color:#94a3b8; margin:0; max-width:80%;">Welkom bij Game Paradise chat hier kan je gratis unblocked chatten!</p>
             </div>
@@ -411,6 +454,20 @@
                 <button class="btn btn-icon" onclick="document.getElementById('imgInp').click()" style="display: flex; align-items: center; justify-content: center;">
                     <img src="https://i.imgur.com/CeRZ8na.png" style="width: 24px; height: 24px; object-fit: contain;">
                 </button>
+                <div style="position: relative;">
+                    <button class="btn btn-icon" onclick="toggleEmojiMenu()" style="display: flex; align-items: center; justify-content: center; font-size: 20px;">
+                        😊
+                    </button>
+                    <div id="emojiDropdown" class="emoji-dropdown" style="display: none;">
+                        <div style="padding: 8px; display: flex; background: #1e293b; border-bottom: 1px solid #334155;">
+                            <div class="emoji-tab active" onclick="switchEmojiTab('emoji')" style="flex:1;padding:8px;text-align:center;cursor:pointer;font-size:18px;">😀</div>
+                            <div class="emoji-tab" onclick="switchEmojiTab('gif')" style="flex:1;padding:8px;text-align:center;cursor:pointer;font-size:18px;">🎞</div>
+                            <div class="emoji-tab" onclick="switchEmojiTab('sticker')" style="flex:1;padding:8px;text-align:center;cursor:pointer;font-size:18px;">🎨</div>
+                        </div>
+                        <div id="emojiDropdownContent" style="height: 280px; overflow-y: auto; background: #0f172a;">
+                        </div>
+                    </div>
+                </div>
                 <input type="file" id="imgInp" hidden accept="image/*" onchange="handleImageSend(this)">
                 
                 <textarea id="messageInput" placeholder="Typ bericht... (Shift+Enter voor nieuwe regel)" 
@@ -483,13 +540,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 
-// SAFARI PERSISTENCE FIX
-try {
-    db.enablePersistence({ synchronizeTabs: true }).catch(function(err) {
-        if (err.code == 'failed-precondition') console.warn("Persistence failed: tabs");
-        else if (err.code == 'unimplemented') console.warn("Persistence failed: browser");
-    });
-} catch (e) { console.log("Persistence error ignored"); }
+// Verwijder het persistence blok dat hier stond!
 
 window.onerror = function(msg, url, line) {
     if(msg.includes("Firebase") || msg.includes("quota")) notify("Systeem Fout", msg, null, null, "error");
@@ -498,8 +549,25 @@ window.onerror = function(msg, url, line) {
 // ADMIN CONFIG
 const ADMIN_EMAILS = ["someoeneheilig@gmail.com", "melle1337k@gmail.com"];
 
-const badWords = ["kanker", "hoer", "slet", "tyfus", "tering", "kut", "neuk", "lul", "pik", "verdomme", "godver", "nigger", "neger", "hitler", "nazi", "kkr", "mongool", "autist", "bitch", "fuck", "asshole", "klootzak"];
-function checkProfanity(text) { if(!text) return false; return badWords.some(word => text.toLowerCase().includes(word)); }
+let badWords = ["kanker", "hoer", "slet", "tyfus", "tering", "kut", "neuk", "lul", "pik", "verdomme", "godver", "nigger", "neger", "hitler", "nazi", "kkr", "mongool", "autist", "bitch", "fuck", "asshole", "klootzak"];
+let firebaseBannedWords = [];
+
+async function loadBannedWords() {
+    try {
+        const doc = await db.collection("admin").doc("settings").get();
+        if (doc.exists && doc.data().bannedWords) {
+            firebaseBannedWords = doc.data().bannedWords;
+        }
+    } catch (e) {
+        console.log("Kon gebanned words niet laden:", e);
+    }
+}
+
+function checkProfanity(text) { 
+    if(!text) return false; 
+    const allBadWords = [...badWords, ...firebaseBannedWords];
+    return allBadWords.some(word => text.toLowerCase().includes(word)); 
+}
 
 // STATE
 let user = null;
@@ -552,8 +620,14 @@ document.addEventListener('keydown', (e) => {
 });
 
 auth.onAuthStateChanged(u => {
-    if (u) { user = u; checkSetup(); startPresenceSystem(); }
-    else { location.href = 'index.html'; }
+    if (u) { 
+        user = u; 
+        // We roepen checkSetup aan, die op zijn beurt weer initApp() start
+        checkSetup(); 
+        startPresenceSystem(); 
+    } else { 
+        location.href = 'index.html'; 
+    }
 });
 
 function isAdmin() {
@@ -561,6 +635,7 @@ function isAdmin() {
 }
 
 function startPresenceSystem() {
+    if(!user) return;
     updatePresence('online');
     setInterval(() => { updatePresence('online'); }, 60000);
     window.addEventListener('beforeunload', () => {
@@ -568,17 +643,39 @@ function startPresenceSystem() {
         if(activeChatId) updateTyping(false);
     });
 }
-function updatePresence(status) { if(user) db.collection("users").doc(user.uid).update({ status: status, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }); }
+
+function updatePresence(status) { 
+    if(user) db.collection("users").doc(user.uid).update({ 
+        status: status, 
+        lastSeen: firebase.firestore.FieldValue.serverTimestamp() 
+    }); 
+}
 
 async function checkSetup() {
-    const doc = await db.collection("users").doc(user.uid).get();
-    if (!doc.exists || !doc.data().name) { document.getElementById('setupOverlay').style.display = 'flex'; }
-    else {
-        document.getElementById('setupOverlay').style.display = 'none';
-        if (Notification.permission === "default") Notification.requestPermission();
-        initApp();
+    try {
+        const doc = await db.collection("users").doc(user.uid).get();
+        if (!doc.exists || !doc.data().name) { 
+            document.getElementById('setupOverlay').style.display = 'flex'; 
+        } else {
+            document.getElementById('setupOverlay').style.display = 'none';
+            
+            // Veilig voor iPad Safari
+            if ("Notification" in window && Notification.permission === "default") {
+                Notification.requestPermission();
+            }
+            
+            // LAAD VERBODEN WOORDEN EN START DE APP
+            await loadBannedWords(); 
+            if (typeof initApp === "function") {
+                initApp(); 
+            } else {
+                console.error("Fout: De functie initApp() is niet gevonden in de rest van de code.");
+            }
+        }
+    } catch (error) {
+        console.error("Fout in checkSetup:", error);
     }
-}
+} // <--- Deze accolade sloot je script af!
 
 function initApp() {
     db.collection("users").doc(user.uid).onSnapshot(d => {
@@ -605,6 +702,7 @@ function initApp() {
     subscribeToChats();
     loadPinnedChats();
     loadReadStatus();
+    loadBannedWords();
     setTimeout(() => { ignoreInitialGroups = false; }, 2000);
 }
 
@@ -1655,10 +1753,11 @@ function notify(title, body, icon, chatId, type) {
         t.onclick = () => { if(chatId) openChat(chatId, title, icon, type); t.remove(); };
         box.appendChild(t); setTimeout(()=>t.remove(), 4000);
     }
-    if(Notification.permission === "granted" && document.hidden) {
-        const n = new Notification(title, { body: body, icon: icon || "https://i.imgur.com/CeRZ8na.png" });
-        n.onclick = function() { window.focus(); this.close(); if(chatId) openChat(chatId, title, icon, type); };
-    }
+    // Veilige check voor Apple apparaten:
+if("Notification" in window && Notification.permission === "granted" && document.hidden) {
+    const n = new Notification(title, { body: body, icon: icon || "" });
+    n.onclick = function() { window.focus(); this.close(); if(chatId) openChat(chatId, title, icon, type); };
+}
 }
 function previewImage(inp, id) { if(inp.files[0]) { resizeAndCompressImage(inp.files[0]).then(base64 => { document.getElementById(id).src = base64; currentBase64 = base64; }); } }
 async function createGroup() {
@@ -1768,6 +1867,257 @@ async function declineRequest(senderId) {
     await db.collection("users").doc(senderId).collection("sentRequests").doc(user.uid).delete();
     
     renderSidebar();
+}
+
+const KLIPY_API_KEY = "0aJeDYJCwd1tXHGfOsqYItkpXlxpoxgPOdLTYDMMF6NtPEfmxcp3CGDrM3BBDYYv";
+const KLIPY_BASE = "https://api.klipy.com/api/v1/" + KLIPY_API_KEY;
+
+const emojiCategories = {
+    "😀": ["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","☺️","😚","😙","🥲","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥳","🥸","😎","🤓","🧐","😕","😟","🙁","☹️","😮","😯","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","👿","💀","☠️","💩"],
+    "❤️": ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","♥️","😻","💑","💏","🫀","🫂","🙏"],
+    "✋": ["✌️","🤞","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","✍️","💪","🤳","🦾","🦿","🦵","🦶","👂","🦻","👃"],
+    "🍔": ["🍏","🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑","🥦","🥬","🥒","🌶️","🫑","🌽","🥕","🥔","🍠","🥐","🥯","🍞","🥖","🥨","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🌭","🍔","🍟","🍕","🥪","🥙","🧆","🌮","🌯","🫔","🥗","🥘","🫕","🍝","🍜","🍲","🍛","🍣","🍱","🥟","🍤","🍙","🍚","🍘","🍥","🥠","🥮","🍢","🍡","🍧","🍨","🍦","🥧","🧁","🍰","🎂","🍮","🍭","🍬","🍫","🍿","🍩","🍪","🌰","🥜","🍯","🥛","🍼","☕","🍵","🧃","🥤","🧋","🍶","🍺","🍻","🥂","🍷","🥃","🍸","🍹","🧉","🍾","🧊"],
+    "⚽": ["⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎱","🪀","🏓","🏸","🏒","🏑","🥍","🏏","🪃","🥅","⛳","🪁","🏹","🎣","🤿","🥊","🥋","🎽","🛹","🛼","🛷","⛸","🥌","🎿","⛷️","🏂","🪂","🏋️","🤼","🤸","🤺","⛹️","🤾","🏌️","🏇","🧘","🏄","🏊","🤽","🚣","🧗","🚵","🚴","🏆","🥇","🥈","🥉","🏅","🎖️"],
+    "🚗": ["🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🛻","🚚","🚛","🚜","🏍️","🛵","🚲","🛴","🛺","🚨","🚔","🚍","🚘","🚖","🚡","🚠","🚟","🚃","🚋","🚞","🚝","🚄","🚅","🚈","🚂","🚆","🚇","🚊","🚉","✈️","🛫","🛬","🛩️","💺","🛰️","🚀","🛸","🚁","🛶","⛵","🚤","🛥️","🛳️","⛴️","🚢","⚓","⛽","🚧","🚦","🚥","🚏","🗺️","🗿","🗽","🗼","🏰","🏯","🏟️","🎡","🎢","🎠","⛲","🏖️","🏝️","🏜️","🌋","⛰️","🏔️","🗻","🏕️","⛺","🛖","🏠","🏡","🏘️","🏚️","🏗️","🏭","🏢","🏬","🏣","🏤","🏥","🏦","🏨","🏪","🏫"],
+    "💡": ["⌚","📱","📲","💻","⌨️","🖥️","🖨️","🖱️","🖲️","🕹️","💽","💾","💿","📀","📼","📷","📸","📹","🎥","📽️","🎞️","📞","☎️","📟","📠","📺","📻","🎙️","🎚️","🎛️","🧭","⏱️","⏲️","⏰","🕰️","⌛","⏳","📡","🔋","🔌","💡","🔦","🕯️","🪔","🧯","🛢️","💸","💵","💴","💶","💷","🪙","💰","💳","💎","⚖️","🔧","🔨","⚒️","🛠️","⛏️","🔩","⚙️","🪤","🧱","⛓️","🧲","🔫","💣","🧨","🪓","🔪","🗡️","⚔️","🛡️","🚬","⚰️","⚱️","🏺","🔮","📿","🧿","💈","⚗️","🔭","🔬","🩹","🩺","💊","💉","🩸","🦠","🧫","🧪","🌡️"],
+    "🔣": ["0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟","🔢","#️⃣","*️⃣","⏏️","▶️","⏸️","⏯️","⏹️","⏺️","⏭️","⏮️","⏩","⏪","⏫","⏬","◀️","🔼","🔽","➡️","⬅️","⬆️","⬇️","↗️","↘️","↙️","↖️","↕️","↔️","↪️","↩️","⤴️","⤵️","🔀","🔁","🔂","🔄","🔃","🎵","🎶","➕","➖","➗","✖️","♾️","💲","💱","™️","©️","®️","🔚","🔙","🔛","🔝","🔜","〰️","➰","➿","✔️","☑️","❌","❎","✅","💯","💮","🟢","🟡","🔴","🟠","🔵","🟣","⚫","⚪","🟤","🔺","🔻","🔸","🔹","🔶","🔷","🔳","🔲","▪️","▫️","◾","◽","◼️","◻️","🟥","🟧","🟨","🟩","🟦","🟪","⬛","⬜","🟫","🔈","🔇","🔉","🔊","🔔","🔕","📣","📢","💬","💭","🗯️","♠️","♣️","♥️","♦️","🃏","🎴","🀄"]
+};
+
+let currentEmojiCat = "😀";
+let emojiMenuOpen = false;
+let emojiDropdownRendered = false;
+
+function toggleEmojiMenu() {
+    const dropdown = document.getElementById('emojiDropdown');
+    emojiMenuOpen = !emojiMenuOpen;
+    dropdown.style.display = emojiMenuOpen ? 'block' : 'none';
+    
+    if(emojiMenuOpen && !emojiDropdownRendered) {
+        renderEmojiDropdown();
+        emojiDropdownRendered = true;
+    }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    if(!e.target.closest('#emojiDropdown') && !e.target.closest('button[onclick="toggleEmojiMenu()"]')) {
+        document.getElementById('emojiDropdown').style.display = 'none';
+        emojiMenuOpen = false;
+    }
+});
+
+function renderEmojiDropdown() {
+    const content = document.getElementById('emojiDropdownContent');
+    let html = '<div class="emoji-categories">';
+    for(const cat in emojiCategories) {
+        html += `<div class="emoji-cat-btn ${cat === currentEmojiCat ? 'active' : ''}" onclick="selectEmojiCategory('${cat}')">${cat}</div>`;
+    }
+    html += '</div>';
+    html += '<input type="text" class="emoji-search" placeholder="Zoek emoji..." onkeyup="searchEmojis(this.value)">';
+    html += '<div class="emoji-grid" id="emojiGrid"></div>';
+    
+    html += '<div id="gifContentDropdown" style="display:none; height:100%;">';
+    html += '<div style="padding: 8px;"><input type="text" id="gifSearch" placeholder="Search KLIPY" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; outline: none;" onkeyup="if(event.key === \'Enter\') searchGifs()"></div>';
+    html += '<div id="gifResults" class="gif-grid" style="padding: 8px; max-height: 200px; overflow-y: auto;"></div></div>';
+    
+    html += '<div id="stickerContentDropdown" style="display:none; height:100%; display: flex; align-items: center; justify-content: center;">';
+    html += '<div style="text-align: center; color: gray; padding: 20px;"><span style="font-size: 40px;">🎨</span><p>Stickers zijn binnenkort beschikbaar!</p></div></div>';
+    
+    content.innerHTML = html;
+    renderEmojis(currentEmojiCat);
+}
+
+function switchEmojiTab(tab) {
+    document.querySelectorAll('#emojiDropdown .emoji-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    const emojiGrid = document.getElementById('emojiGrid');
+    if(emojiGrid) emojiGrid.parentElement.style.display = tab === 'emoji' ? 'block' : 'none';
+    
+    const gifContent = document.getElementById('gifContentDropdown');
+    if(gifContent) gifContent.style.display = tab === 'gif' ? 'block' : 'none';
+    
+    const stickerContent = document.getElementById('stickerContentDropdown');
+    if(stickerContent) stickerContent.style.display = tab === 'sticker' ? 'flex' : 'none';
+    
+    if(tab === 'gif') {
+        const gifResults = document.getElementById('gifResults');
+        if(gifResults && gifResults.innerHTML === '') {
+            loadTrendingGifs();
+        }
+    }
+}
+
+function renderEmojiCategories() {
+    const container = document.getElementById('emojiContent');
+    let html = '<div class="emoji-categories">';
+    for(const cat in emojiCategories) {
+        html += `<div class="emoji-cat-btn ${cat === currentEmojiCat ? 'active' : ''}" onclick="selectEmojiCategory('${cat}')">${cat}</div>`;
+    }
+    html += '</div><input type="text" class="emoji-search" placeholder="Zoek emoji..." onkeyup="searchEmojis(this.value)"><div class="emoji-grid" id="emojiGrid"></div>';
+    container.innerHTML = html;
+}
+
+function selectEmojiCategory(cat) {
+    currentEmojiCat = cat;
+    document.querySelectorAll('#emojiDropdownContent .emoji-cat-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    renderEmojis(cat);
+}
+
+function renderEmojis(cat) {
+    const grid = document.getElementById('emojiGrid');
+    if(!grid) return;
+    let html = '';
+    emojiCategories[cat].forEach(emoji => {
+        html += `<div class="emoji-item" onclick="insertEmoji('${emoji}')">${emoji}</div>`;
+    });
+    grid.innerHTML = html;
+}
+
+function searchEmojis(query) {
+    const grid = document.getElementById('emojiGrid');
+    if(!grid) return;
+    if(!query) {
+        renderEmojis(currentEmojiCat);
+        return;
+    }
+    query = query.toLowerCase();
+    let allEmojis = [];
+    for(const cat in emojiCategories) {
+        allEmojis = allEmojis.concat(emojiCategories[cat]);
+    }
+    let filtered = allEmojis; // Simple filter - just show all for now
+    let html = '';
+    filtered.forEach(emoji => {
+        html += `<div class="emoji-item" onclick="insertEmoji('${emoji}')">${emoji}</div>`;
+    });
+    grid.innerHTML = html;
+}
+
+function insertEmoji(emoji) {
+    const inp = document.getElementById('messageInput');
+    inp.value += emoji;
+    inp.focus();
+    document.getElementById('emojiDropdown').style.display = 'none';
+    emojiMenuOpen = false;
+}
+
+async function loadTrendingGifs() {
+    const container = document.getElementById('gifResults');
+    if(container) container.innerHTML = '<p style="color:gray; text-align:center; padding:20px;">Laden...</p>';
+    
+    try {
+        // Try featured endpoint first
+        let res = await fetch(KLIPY_BASE + "/gifs/featured?limit=20");
+        let data = await res.json();
+        console.log("KLIPY response:", data);
+        
+        let gifs = [];
+        if(data.result && data.data && data.data.data) {
+            gifs = data.data.data;
+        } else if(data.results) {
+            gifs = data.results;
+        } else if(Array.isArray(data)) {
+            gifs = data;
+        }
+        
+        // If no results, try trending
+        if(gifs.length === 0) {
+            res = await fetch(KLIPY_BASE + "/gifs/trending?limit=20");
+            data = await res.json();
+            gifs = data.data?.data || data.results || [];
+        }
+        
+        renderGifs(gifs);
+    } catch(e) {
+        console.error("Error loading gifs:", e);
+        if(container) container.innerHTML = '<p style="color:gray; text-align:center;">Kon GIFs niet laden</p>';
+    }
+}
+
+async function searchGifs() {
+    const query = document.getElementById('gifSearch').value.trim();
+    if(!query) return;
+    
+    const container = document.getElementById('gifResults');
+    if(container) container.innerHTML = '<p style="color:gray; text-align:center; padding:20px;">Zoeken...</p>';
+    
+    try {
+        const res = await fetch(KLIPY_BASE + "/gifs/search?q=" + encodeURIComponent(query) + "&limit=20");
+        const data = await res.json();
+        const gifs = data.data?.data || data.results || [];
+        renderGifs(gifs);
+    } catch(e) {
+        console.error("Error searching gifs:", e);
+        if(container) container.innerHTML = '<p style="color:gray; text-align:center;">Kon niet zoeken</p>';
+    }
+}
+
+function renderGifs(gifs) {
+    const container = document.getElementById('gifResults');
+    if(!container) return;
+    if(!gifs || gifs.length === 0) {
+        container.innerHTML = '<p style="color:gray; text-align:center;">Geen GIFs gevonden</p>';
+        return;
+    }
+    let html = '<div class="gif-grid">';
+    gifs.forEach(gif => {
+        // KLIPY uses files array, try multiple formats
+        let url = '';
+        
+        // Try KLIPY files format
+        if(gif.files && Array.isArray(gif.files)) {
+            const nanogif = gif.files.find(f => f?.format === 'nanogif');
+            const gifFormat = gif.files.find(f => f?.format === 'gif');
+            url = nanogif?.url || gifFormat?.url || '';
+        }
+        
+        // Fallback to media_formats (like Tenor/Giphy)
+        if(!url && gif.media_formats) {
+            url = gif.media_formats.nanogif || gif.media_formats.tinygif || gif.media_formats.gif || '';
+        }
+        
+        // Fallback to direct url field
+        if(!url && gif.url) {
+            url = gif.url;
+        }
+        
+        if(url) {
+            html += `<img class="gif-item" src="${url}" onclick="sendGif('${url}')">`;
+        }
+    });
+    html += '</div>';
+    if(html === '<div class="gif-grid"></div>') {
+        container.innerHTML = '<p style="color:gray; text-align:center;">Geen GIFs gevonden</p>';
+    } else {
+        container.innerHTML = html;
+    }
+}
+
+function sendGif(url) {
+    if(!activeChatId) {
+        notify("Geen chat geselecteerd", "Selecteer eerst een chat");
+        return;
+    }
+    
+    document.getElementById('emojiDropdown').style.display = 'none';
+    emojiMenuOpen = false;
+    
+    let ref;
+    if(chatType === 'global') ref = db.collection("chats");
+    else if(chatType === 'group') ref = db.collection("groups").doc(activeChatId).collection("messages");
+    else ref = db.collection("private_chats").doc([user.uid, activeChatId].sort().join("_")).collection("messages");
+    
+    ref.add({
+        text: "",
+        image: url,
+        uid: user.uid,
+        user: user.displayName || user.email,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    
+    notify("GIF verstuurd!", "");
 }
 </script>
 <script>var d=document,w="https://tally.so/widgets/embed.js",v=function(){"undefined"!=typeof Tally?Tally.loadEmbeds():d.querySelectorAll("iframe[data-tally-src]:not([src])").forEach((function(e){e.src=e.dataset.tallySrc}))};if("undefined"!=typeof Tally)v();else if(d.querySelector('script[src="'+w+'"]')==null){var s=d.createElement("script");s.src=w,s.onload=v,s.onerror=v,d.body.appendChild(s);}</script>

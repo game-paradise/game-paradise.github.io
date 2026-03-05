@@ -641,11 +641,13 @@ function updatePresence(status) { if(user) db.collection("users").doc(user.uid).
 async function checkSetup() {
     const doc = await db.collection("users").doc(user.uid).get();
     if (!doc.exists || !doc.data().name) { document.getElementById('setupOverlay').style.display = 'flex'; }
-    else {
-        document.getElementById('setupOverlay').style.display = 'none';
-        if (Notification.permission === "default") Notification.requestPermission();
-        initApp();
+else {
+    document.getElementById('setupOverlay').style.display = 'none';
+    // Veilige check voor Apple apparaten:
+    if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
     }
+    initApp();
 }
 
 function initApp() {
@@ -1724,10 +1726,11 @@ function notify(title, body, icon, chatId, type) {
         t.onclick = () => { if(chatId) openChat(chatId, title, icon, type); t.remove(); };
         box.appendChild(t); setTimeout(()=>t.remove(), 4000);
     }
-    if(Notification.permission === "granted" && document.hidden) {
-        const n = new Notification(title, { body: body, icon: icon || "https://i.imgur.com/CeRZ8na.png" });
-        n.onclick = function() { window.focus(); this.close(); if(chatId) openChat(chatId, title, icon, type); };
-    }
+    // Veilige check voor Apple apparaten:
+if("Notification" in window && Notification.permission === "granted" && document.hidden) {
+    const n = new Notification(title, { body: body, icon: icon || "" });
+    n.onclick = function() { window.focus(); this.close(); if(chatId) openChat(chatId, title, icon, type); };
+}
 }
 function previewImage(inp, id) { if(inp.files[0]) { resizeAndCompressImage(inp.files[0]).then(base64 => { document.getElementById(id).src = base64; currentBase64 = base64; }); } }
 async function createGroup() {

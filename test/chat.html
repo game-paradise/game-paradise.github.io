@@ -433,7 +433,7 @@
         
         <div class="chat-messages" id="chatMessages">
             <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; opacity:0.8;">
-                <img src="https://jappie716.github.io/icon/favicon.png" style="width:100px; height:100px; margin-bottom:15px; border-radius:15px; box-shadow:0 0 20px rgba(37, 99, 235, 0.3);">
+                <img src="https://game-paradise.github.io/icon/favicon.png" style="width:100px; height:100px; margin-bottom:15px; border-radius:15px; box-shadow:0 0 20px rgba(37, 99, 235, 0.3);">
                 <h2 style="color:white; margin:0 0 10px 0;">Game Paradise chat</h2>
                 <p style="color:#94a3b8; margin:0; max-width:80%;">Welkom bij Game Paradise chat hier kan je gratis unblocked chatten!</p>
             </div>
@@ -1746,17 +1746,44 @@ async function kickMember(mid, mName) { await sendSystemMessage(`${mName} is ver
 async function transferOwner(newId, newName) { await sendSystemMessage(`${document.getElementById('myName').innerText} heeft ${newName} beheerder gemaakt.`); await db.collection("groups").doc(activeChatId).update({ owner: newId }); openChatSettings(); }
 
 function notify(title, body, icon, chatId, type) {
-    if(activeChatId !== chatId) {
+    // Check of het venster op dit moment niet actief wordt gebruikt door de gebruiker
+    const isWindowNotActive = document.hidden || !document.hasFocus();
+
+    // Laat de toast (in-app melding) zien als:
+    // 1. Het een andere chat is dan die open staat
+    // 2. OF als de chat wel open staat, maar je in een ander Windows/App venster zit
+    if (activeChatId !== chatId || isWindowNotActive) {
         const box = document.getElementById('toast-container');
-        const t = document.createElement('div'); t.className = 'toast';
-        t.innerHTML = `<img src="${icon || 'https://ui-avatars.com/api/?name=Msg'}" style="width:30px;height:30px;border-radius:50%"><div><b>${title}</b><br><small>${body}</small></div>`;
-        t.onclick = () => { if(chatId) openChat(chatId, title, icon, type); t.remove(); };
-        box.appendChild(t); setTimeout(()=>t.remove(), 4000);
+        if (box) {
+            const t = document.createElement('div'); 
+            t.className = 'toast';
+            t.innerHTML = `
+                <img src="${icon || 'https://ui-avatars.com/api/?name=Msg'}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;">
+                <div><b>${title}</b><br><small>${body || ''}</small></div>`;
+            
+            t.onclick = () => { 
+                window.focus();
+                if(chatId) openChat(chatId, title, icon, type); 
+                t.remove(); 
+            };
+            box.appendChild(t); 
+            setTimeout(() => t.remove(), 4000);
+        }
     }
-    // Veilige check voor Apple apparaten:
-if("Notification" in window && Notification.permission === "granted" && document.hidden) {
-    const n = new Notification(title, { body: body, icon: icon || "" });
-    n.onclick = function() { window.focus(); this.close(); if(chatId) openChat(chatId, title, icon, type); };
+
+    // Browser/Systeem melding (de banner buiten de browser)
+    // Deze laten we nu ook zien als het venster geen focus heeft
+    if ("Notification" in window && Notification.permission === "granted" && isWindowNotActive) {
+        const n = new Notification(title, { 
+            body: body, 
+            icon: icon || "https://ui-avatars.com/api/?name=Chat" 
+        });
+        n.onclick = function() { 
+            window.focus(); 
+            this.close(); 
+            if(chatId) openChat(chatId, title, icon, type); 
+        };
+    }
 }
 }
 function previewImage(inp, id) { if(inp.files[0]) { resizeAndCompressImage(inp.files[0]).then(base64 => { document.getElementById(id).src = base64; currentBase64 = base64; }); } }

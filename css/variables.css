@@ -1,0 +1,62 @@
+:root {
+    --bg: #0b0b0d;
+    --panel: #141316;
+    --muted-gray: #9aa0a6;
+    --accent: #6d4cff; /* muted purple */
+    --accent-strong: #7f5bff;
+    --card: #16161a;
+}
+
+/* Light theme overrides when data-theme="light" on body */
+body[data-theme="light"] {
+    --bg: #ffffff;
+    --panel: #f5f6f8;
+    --muted-gray: #33383e;
+    --accent: #6d4cff;
+    --accent-strong: #5b3bff;
+    --card: #ffffff;
+    color: var(--muted-gray);
+    background-color: var(--bg);
+}
+
+/* small styling for theme buttons inside settings */
+.theme-choices { display:flex; gap:0.5rem; margin-top:0.5rem; }
+.theme-btn {
+    background: #1a1a1b;
+    color: #d1d1d5;
+    border: 1px solid rgba(255,255,255,0.04);
+    padding: 0.4rem 0.7rem;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.theme-btn[aria-pressed="true"] {
+    background: linear-gradient(180deg, var(--accent-strong), var(--accent));
+    color: #fff;
+    border-color: rgba(127,91,255,0.12);
+}
+/* ensure theme buttons adapt in light mode */
+body[data-theme="light"] .theme-btn { background: #f0f0f2; color: var(--muted-gray); border: 1px solid rgba(0,0,0,0.06); }
+body[data-theme="light"] .theme-btn[aria-pressed="true"] { background: linear-gradient(180deg, var(--accent-strong), var(--accent)); color:#fff; }
+
+/* make accent buttons visually match theme buttons */
+.accent-choices { display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; }
+.accent-btn {
+    background: #1a1a1b;
+    color: #d1d1d5;
+    border: 1px solid rgba(255,255,255,0.04);
+    padding: 0.4rem 0.7rem;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.accent-btn[aria-pressed="true"] {
+    background: linear-gradient(180deg, var(--accent-strong), var(--accent));
+    color: #fff;
+    border-color: rgba(127,91,255,0.12);
+}
+/* ensure accent buttons adapt in light mode */
+body[data-theme="light"] .accent-btn { background: #f0f0f2; color: var(--muted-gray); border: 1px solid rgba(0,0,0,0.06); }
+body[data-theme="light"] .accent-btn[aria-pressed="true"] { background: linear-gradient(180deg, var(--accent-strong), var(--accent)); color:#fff; }
+
+/* small spacing for inputs inside modal */
+.modal-body input[type="color"] { width: 56px; height: 36px; padding: 0; border: none; background: transparent; margin-right: 0.5rem; vertical-align: middle; }
+.modal-body input[type="text"] { padding: 0.4rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04); background: transparent; color: var(--muted-gray); width: 160px; }

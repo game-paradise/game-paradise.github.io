@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Paradise - Greedy Snakes</title>
+    <link rel="icon" type="image/png" href="/icon/favicon.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <a id="githubLink" class="github-link" href="https://github.com/ikhouvankaasq/greedy-snakes/tree/main" target="_blank" rel="noopener noreferrer">
+        <img src="https://raw.githubusercontent.com/ikhouvankaasq/ikhouvankaasq.github.io/refs/heads/main/storage/img/github-mark-white.png" alt="GitHub Repository">
+    </a>
+    <!-- Start Screen -->
+    <div id="startScreen" class="screen active">
+        <!-- Yellow Money in top-left corner -->
+        <div class="start-yellow-money">
+            <span class="money-icon">💰</span>
+            <span id="yellowMoneyCount">0</span>
+        </div>
+
+        <!-- Skins Tab Indicator -->
+        <div class="skins-tab-indicator">
+            <span class="arrow">←</span>
+            <span class="skins-text">Skins</span>
+        </div>
+
+        <div class="start-container">
+            <!-- Logo -->
+            <div class="logo-container">
+                <img src="https://github.com/ikhouvankaasq/greedy-snakes/blob/3b9552b2aefa25d2581cb3f1fc607b6f3b925f01/logo.png?raw=true" alt="Greedy Snake Logo" class="logo-image">
+            </div>
+            
+            <!-- Player Name Input -->
+            <div class="name-input-group">
+                <input type="text" id="playerName" class="name-input" placeholder="Enter your name" maxlength="20">
+            </div>
+            
+            <!-- Options Row (Map, Size, Difficulty) -->
+            <div class="options-row">
+                <!-- Map Theme Selector -->
+                <div class="option-selector">
+                    <button class="option-display-btn" id="mapDisplayBtn">
+                        <span class="option-label">Map Theme</span>
+                        <span class="option-value" id="mapValue">Stars</span>
+                    </button>
+                    <!-- Popup Modal -->
+                    <div class="option-modal" id="mapModal">
+                        <div class="modal-content">
+                            <h3>Select Map Theme</h3>
+                            <div class="modal-options">
+                                <button class="modal-option active" data-map="stars">
+                                    <div class="map-preview stars-preview"></div>
+                                    <span>Stars</span>
+                                </button>
+                                <button class="modal-option" data-map="rainbow">
+                                    <div class="map-preview rainbow-preview"></div>
+                                    <span>Rainbow</span>
+                                </button>
+                                <button class="modal-option disabled" data-map="coming-soon">
+                                    <div class="map-preview coming-soon-preview"></div>
+                                    <span>Coming Soon</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Map Size Selector -->
+                <div class="option-selector">
+                    <button class="option-display-btn" id="sizeDisplayBtn">
+                        <span class="option-label">Map Size</span>
+                        <span class="option-value" id="sizeValue">Normal</span>
+                    </button>
+                    <!-- Popup Modal -->
+                    <div class="option-modal" id="sizeModal">
+                        <div class="modal-content">
+                            <h3>Select Map Size</h3>
+                            <div class="modal-options">
+                                <button class="modal-option" data-size="small">Small</button>
+                                <button class="modal-option active" data-size="normal">Normal</button>
+                                <button class="modal-option" data-size="big">Big</button>
+                                <button class="modal-option" data-size="huge">Huge</button>
+                                <button class="modal-option" data-size="gigantic">Gigantic</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Bot Difficulty Selector -->
+                <div class="option-selector">
+                    <button class="option-display-btn" id="difficultyDisplayBtn">
+                        <span class="option-label">Difficulty</span>
+                        <span class="option-value" id="difficultyValue">Easy</span>
+                    </button>
+                    <!-- Popup Modal -->
+                    <div class="option-modal" id="difficultyModal">
+                        <div class="modal-content">
+                            <h3>Select Difficulty</h3>
+                            <div class="modal-options">
+                                <button class="modal-option active" data-difficulty="easy">Easy</button>
+                                <button class="modal-option" data-difficulty="normal">Normal</button>
+                                <button class="modal-option" data-difficulty="hard">Hard</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Start Game Button -->
+            <button id="startButton" class="start-button">Start Game</button>
+        </div>
+    </div>
+    
+    <!-- Skins Page -->
+    <div id="skinsScreen" class="screen">
+        <!-- Back Button -->
+        <button class="back-button" id="backButton">← Back</button>
+        
+        <!-- Yellow Money in top-right -->
+        <div class="skins-yellow-money">
+            <span class="money-icon">💰</span>
+            <span id="yellowMoneySkins">0</span>
+        </div>
+
+        <div class="skins-page-container">
+            <h1>Choose Your Snake Skin</h1>
+            
+            <div class="skin-carousel">
+                <button class="carousel-nav prev" id="prevSkinBtn">❮</button>
+                
+                <div class="skin-display">
+                    <div class="skin-item active" id="skinItem0">
+                        <div class="skin-preview-large ball-skin-green"></div>
+                        <h2 id="skinName0">Green Ball</h2>
+                        <p id="skinStatus0" class="skin-status owned">Owned</p>
+                    </div>
+                    <div class="skin-item" id="skinItem1">
+                        <div class="skin-preview-large ball-skin-red"></div>
+                        <h2 id="skinName1">Red Ball</h2>
+                        <p id="skinStatus1" class="skin-status locked">5 <span class="money-icon">💰</span></p>
+                    </div>
+                    <div class="skin-item" id="skinItem2">
+                        <div class="skin-preview-large ball-skin-blue"></div>
+                        <h2 id="skinName2">Blue Ball</h2>
+                        <p id="skinStatus2" class="skin-status locked">5 <span class="money-icon">💰</span></p>
+                    </div>
+                    <div class="skin-item" id="skinItem3">
+                        <div class="skin-preview-large ball-skin-purple"></div>
+                        <h2 id="skinName3">Purple Ball</h2>
+                        <p id="skinStatus3" class="skin-status locked">5 <span class="money-icon">💰</span></p>
+                    </div>
+                    <div class="skin-item" id="skinItem4">
+                        <div class="skin-preview-large ball-skin-yellow"></div>
+                        <h2 id="skinName4">Yellow Ball</h2>
+                        <p id="skinStatus4" class="skin-status locked">5 <span class="money-icon">💰</span></p>
+                    </div>
+                    <div class="skin-item" id="skinItem5">
+                        <div class="skin-preview-large ball-skin-cyan"></div>
+                        <h2 id="skinName5">Cyan Ball</h2>
+                        <p id="skinStatus5" class="skin-status locked">5 <span class="money-icon">💰</span></p>
+                    </div>
+                    <div class="skin-item" id="skinItem6">
+                        <div class="skin-preview-large vector-skin"></div>
+                        <h2 id="skinName6">ERROR :]</h2>
+                        <p id="skinStatus6" class="skin-status locked">100 <span class="money-icon">💰</span></p>
+                    </div>
+                </div>
+                
+                <button class="carousel-nav next" id="nextSkinBtn">❯</button>
+            </div>
+            
+            <div class="skin-actions">
+                <button class="select-button" id="selectSkinBtn">Select Skin</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="screen">
+        <div class="loading-container">
+            <div class="loading-snake">
+                <div class="snake-segment"></div>
+                <div class="snake-segment"></div>
+                <div class="snake-segment"></div>
+                <div class="snake-segment"></div>
+            </div>
+            <p class="loading-text">Loading Game...</p>
+        </div>
+    </div>
+    
+    <!-- Game Screen -->
+    <div id="gameScreen" class="screen">
+        <canvas id="gameCanvas"></canvas>
+        <div class="game-ui">
+            <div class="money-counter">
+                <div class="green-money">
+                    <span class="money-icon">💵</span>
+                    <span id="greenMoneyCount">0</span>
+                </div>
+                <div class="yellow-money">
+                    <span class="money-icon">💰</span>
+                    <span id="yellowMoneyCountGame">0</span>
+                </div>
+            </div>
+            <div class="upgrade-panel">
+                <h3>Upgrades</h3>
+                <div class="upgrade-item">
+                    <span>Size (Lv <span id="sizeLevel">1</span>)</span>
+                    <button id="upgradeSize" class="upgrade-btn">Buy ($<span id="sizeCost">10</span>)</button>
+                </div>
+                <div class="upgrade-item">
+                    <span>Speed (Lv <span id="speedLevel">1</span>)</span>
+                    <button id="upgradeSpeed" class="upgrade-btn">Buy ($<span id="speedCost">10</span>)</button>
+                </div>
+                <div class="upgrade-item">
+                    <span>Multiplier (Lv <span id="multiplierLevel">1</span>)</span>
+                    <button id="upgradeMultiplier" class="upgrade-btn">Buy ($<span id="multiplierCost">10</span>)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mod Button -->
+    <button id="modButton" class="mod-button">
+        <span class="mod-icon">⚙️</span>
+    </button>
+
+    <!-- Mod Side Panel -->
+    <div id="modPanel" class="mod-panel">
+        <div class="mod-panel-header">
+            <h2>Mods</h2>
+            <button id="closeModPanel" class="close-mod-btn">✕</button>
+        </div>
+        
+        <div class="mod-search">
+            <input type="text" id="modSearchBar" placeholder="Search mods...">
+        </div>
+        
+        <div class="mod-filters">
+            <h3>Filters</h3>
+            <label class="filter-option">
+                <input type="checkbox" id="filterMadeByDev">
+                <span>Made by Dev</span>
+            </label>
+        </div>
+        
+        <div id="modList" class="mod-list">
+            <p class="no-mods-message">No mods available</p>
+        </div>
+    </div>
+</body>
+<script src="game.js"></script>
+</html>

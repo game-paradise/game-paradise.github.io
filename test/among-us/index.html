@@ -1,0 +1,179 @@
+
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Among Us</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="bg">
+        <div class="stars"></div>
+    </div>
+    
+    <div id="app">
+        <!-- HOME -->
+        <div id="home" class="screen">
+            <div class="home-content">
+                <div class="logo">
+                    <div class="crewmate">
+                        <div class="visor">
+                            <div class="eye"></div>
+                            <div class="eye"></div>
+                        </div>
+                    </div>
+                </div>
+                <h1 class="title">AMONG US</h1>
+                
+                <div class="menu">
+                    <button id="btn-play" class="btn btn-red">
+                        <span class="btn-icon">▶</span>
+                        <span class="btn-text">PLAY</span>
+                    </button>
+                </div>
+                
+                <div class="login-options" id="login-options" style="display:none;">
+                    <button id="btn-google" class="btn btn-blue">
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="24">
+                        GOOGLE
+                    </button>
+                    <div class="or">OR</div>
+                    <input type="text" id="guest-name" placeholder="Enter name" maxlength="10">
+                    <button id="btn-guest" class="btn btn-gray">GUEST</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- LOBBY -->
+        <div id="lobby" class="screen hidden">
+            <div class="lobby-header">
+                <div class="lobby-left">
+                    <button id="btn-back" class="btn btn-small">←</button>
+                    <h2>LOBBY</h2>
+                </div>
+                <div class="lobby-right">
+                    <span id="player-name"></span>
+                    <button id="btn-logout" class="btn btn-small">OUT</button>
+                </div>
+LOG            </div>
+            
+            <div class="lobby-grid">
+                <div class="panel">
+                    <h3>CREATE GAME</h3>
+                    <input type="text" id="game-name" placeholder="Game name">
+                    <select id="map-select">
+                        <option value="skeld">The Skeld</option>
+                        <option value="mira">Mira HQ</option>
+                        <option value="polus">Polus</option>
+                    </select>
+                    <select id="impostor-count">
+                        <option value="1">1 Impostor</option>
+                        <option value="2">2 Impostors</option>
+                    </select>
+                    <button id="btn-create" class="btn btn-green">CREATE</button>
+                </div>
+                
+                <div class="panel">
+                    <h3>JOIN GAME</h3>
+                    <input type="text" id="join-code" placeholder="Code" maxlength="6">
+                    <button id="btn-join" class="btn btn-blue">JOIN</button>
+                </div>
+                
+                <div class="panel games-panel">
+                    <h3>GAMES</h3>
+                    <div id="games-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GAME -->
+        <div id="game" class="screen hidden">
+            <div class="game-top">
+                <div class="game-info">
+                    <span id="game-code"></span>
+                    <span id="players-count">0/10</span>
+                </div>
+                <button id="btn-leave" class="btn btn-red btn-small">LEAVE</button>
+            </div>
+            
+            <div class="game-main">
+                <div class="map-view">
+                    <svg id="game-map" viewBox="0 0 800 500"></svg>
+                </div>
+                
+                <div class="game-right">
+                    <div class="players-box">
+                        <h4>PLAYERS</h4>
+                        <div id="players-list"></div>
+                    </div>
+                    
+                    <div class="actions">
+                        <button id="btn-emergency" class="btn btn-yellow">EMERGENCY</button>
+                        <button id="btn-kill" class="btn btn-red hidden">KILL</button>
+                        <button id="btn-sabotage" class="btn btn-red hidden">SABOTAGE</button>
+                    </div>
+                    
+                    <div class="tasks-box hidden" id="tasks-box">
+                        <h4>TASKS</h4>
+                        <div id="tasks-list"></div>
+                        <div id="task-progress">0%</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="chat-box">
+                <div id="chat-messages"></div>
+                <div class="chat-input">
+                    <input type="text" id="chat-msg" placeholder="Chat..." maxlength="100">
+                    <button id="btn-send" class="btn btn-small">SEND</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ROLE -->
+        <div id="role-screen" class="screen hidden">
+            <div class="role-box">
+                <h2>YOUR ROLE</h2>
+                <div class="role-crewmate" id="role-display"></div>
+                <h3 id="role-name"></h3>
+                <p id="role-desc"></p>
+                <button id="btn-start" class="btn btn-green hidden">START GAME</button>
+                <p id="wait-host" class="waiting">Waiting for host...</p>
+            </div>
+        </div>
+
+        <!-- VOTE -->
+        <div id="vote" class="screen hidden">
+            <div class="vote-box">
+                <h2>EMERGENCY MEETING</h2>
+                <p id="vote-timer">30s</p>
+                <div id="vote-options"></div>
+                <button id="btn-skip" class="btn btn-gray">SKIP VOTE</button>
+            </div>
+        </div>
+
+        <!-- RESULT -->
+        <div id="result" class="screen hidden">
+            <div class="result-box">
+                <h2 id="result-title"></h2>
+                <p id="result-msg"></p>
+                <button id="btn-lobby" class="btn btn-blue">LOBBY</button>
+            </div>
+        </div>
+
+        <!-- ADMIN -->
+        <div id="admin" class="hidden">
+            <button id="btn-kick" class="btn btn-red btn-small">KICK ALL</button>
+            <button id="btn-end" class="btn btn-red btn-small">END</button>
+        </div>
+    </div>
+
+    <div id="toast" class="hidden"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>

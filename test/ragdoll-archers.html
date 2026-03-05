@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Game Paradise - Ragdoll Archers</title>
+  <link rel="icon" type="image/png" href="/icon/favicon.png">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/bubbls/ruffle@04dd5345a30d6ebf4b0e2cc385568750cd56ed5a/styyyle.css">
+  <script src="game.js" defer></script>
+</head>
+<body>
+
+  <div id="unity-container" class="unity-desktop">
+    <canvas id="unity-canvas"></canvas>
+  </div>
+  
+  <div id="loading-cover">
+    <div id="unity-loading-bar">
+      <div id="unity-logo"><img src="logo.jpeg"></div>
+      <div class="progress-spinner-container">
+        <div class="spinner-left"><img src="spinner.png"></div>
+        <div id="unity-progress-bar-empty">
+          <div id="unity-progress-bar-full"></div>
+        </div>
+        <div class="spinner-right"><img src="spinner.png"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyA0K4geAuueVfiItB_98-LkqRTnpYNUNvM",
+      authDomain: "gameparadise-80490.firebaseapp.com",
+      projectId: "gameparadise-80490",
+      appId: "1:335620903527:web:1bc1e01a386bf6e4e7fac2"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    const DB_NAME = "Ericetto-Ragdoll Archers"; 
+    const STORE_NAME = "PlayerPrefs"; 
+    const GAME_ID = "ragdoll-archers"; 
+    const PROJECT_ID = "gameparadise-80490";
+
+    const loaderUrl = "https://cdn.jsdelivr.net/gh/bubbls/ruffle@7117cc5006472d782b65d96abd375597d6273242/v11121212.js";
+    const config = {
+      dataUrl: "https://cdn.jsdelivr.net/gh/bubbls/ruffle@04dd5345a30d6ebf4b0e2cc385568750cd56ed5a/6697b6deba8b617c67b69c55dcd07cb1.data.unityweb",
+      frameworkUrl: "https://cdn.jsdelivr.net/gh/bubbls/ruffle@04dd5345a30d6ebf4b0e2cc385568750cd56ed5a/0be3c3ee7115b26e1ae28e643afdf1f2.js.unityweb",
+      codeUrl: "https://cdn.jsdelivr.net/gh/bubbls/ruffle@04dd5345a30d6ebf4b0e2cc385568750cd56ed5a/b3397c29f6878557c1c614cbf9e196ea.wasm.unityweb",
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: "Ericetto",
+      productName: "Ragdoll Archers",
+      productVersion: "0.1",
+    };
+
+    let currentUser = null;
+    let gameStarted = false;
+
+    // --- FIREBASE REST API FUNCTIES (Adblock Proof) ---
+
+    async function fetchFromFirestore(uid) {
+      const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/users/${uid}/saveData/${GAME_ID}`;
+      try {
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        const data = await response.json();
+        // Firestore REST API format omzetten naar bruikbare data
+        const jsonString = data.fields.data.stringValue;
+        return JSON.parse(jsonString);
+      } catch (e) { return null; }
+    }
+
+    async function saveToFirestore(uid, prefs) {
+      const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/users/${uid}/saveData/${GAME_ID}?updateMask.fieldPaths=data`;
+      const body = {
+        fields: {
+          data: { stringValue: JSON.stringify(prefs) },
+          lastUpdated: { timestampValue: new Date().toISOString() }
+        }
+      };
+      try {
+        await fetch(url, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+      } catch (e) { }
+    }
+
+    // --- AUTH & INITIALISATIE ---
+
+    auth.onAuthStateChanged(async (user) => {
+      if (gameStarted) return;
+      gameStarted = true;
+
+      if (user) {
+        currentUser = user;
+        const cloudData = await fetchFromFirestore(user.uid);
+        if (cloudData) {
+          await writeToIndexedDB(cloudData);
+        }
+      }
+      startUnity();
+    });
+
+    // Fallback: Start game sowieso na 3 seconden
+    setTimeout(() => { if(!gameStarted) { gameStarted = true; startUnity(); } }, 3000);
+
+    // --- INDEXEDDB HELPERS ---
+
+    function writeToIndexedDB(items) {
+      return new Promise((resolve) => {
+        const request = indexedDB.open(DB_NAME, 2);
+        request.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+        };
+        request.onsuccess = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) { db.close(); resolve(); return; }
+          const tx = db.transaction([STORE_NAME], "readwrite");
+          const store = tx.objectStore(STORE_NAME);
+          items.forEach(item => store.put(item.value, item.key));
+          tx.oncomplete = () => { db.close(); resolve(); };
+        };
+        request.onerror = () => resolve();
+      });
+    }
+
+    function readFromIndexedDB() {
+      return new Promise((resolve) => {
+        const request = indexedDB.open(DB_NAME);
+        request.onsuccess = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) { db.close(); resolve([]); return; }
+          const tx = db.transaction([STORE_NAME], "readonly");
+          const store = tx.objectStore(STORE_NAME);
+          const items = [];
+          store.openCursor().onsuccess = (ev) => {
+            const cursor = ev.target.result;
+            if (cursor) { items.push({ key: cursor.key, value: cursor.value }); cursor.continue(); }
+            else { db.close(); resolve(items); }
+          };
+        };
+        request.onerror = () => resolve([]);
+      });
+    }
+
+    // --- UNITY & AUTO-SAVE ---
+
+    function startUnity() {
+      const canvas = document.querySelector("#unity-canvas");
+      const loadingCover = document.querySelector("#loading-cover");
+      const progressBarFull = document.querySelector("#unity-progress-bar-full");
+
+      const script = document.createElement("script");
+      script.src = loaderUrl;
+      script.onload = () => {
+        createUnityInstance(canvas, config, (progress) => {
+          progressBarFull.style.width = (100 * progress) + "%";
+        }).then((instance) => {
+          loadingCover.style.display = "none";
+          // Elke 15 seconden opslaan
+          setInterval(async () => {
+            if (currentUser) {
+              const prefs = await readFromIndexedDB();
+              if (prefs.length > 0) await saveToFirestore(currentUser.uid, prefs);
+            }
+          }, 15000);
+        });
+      };
+      document.body.appendChild(script);
+    }
+
+    // Laatste save bij afsluiten
+    window.addEventListener("beforeunload", async () => {
+      if (currentUser) {
+        const prefs = await readFromIndexedDB();
+        if (prefs.length > 0) await saveToFirestore(currentUser.uid, prefs);
+      }
+    });
+  </script>
+</body>
+</html>

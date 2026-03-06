@@ -648,50 +648,14 @@ function isAdmin() {
 
 function startPresenceSystem() {
     if(!user) return;
-    
-    // Zet de status direct op online zodra je bent ingelogd
     updatePresence('online');
-    
-    // Vertel Firebase elke 60 seconden dat we er nog zijn
-    setInterval(() => { 
-        updatePresence('online'); 
-    }, 60000);
-    
-    // Als het tabblad gesloten wordt of de browser ververst:
+    setInterval(() => { updatePresence('online'); }, 60000);
     window.addEventListener('beforeunload', () => {
-        updatePresence('offline');
-        if(activeChatId) updateTyping(false);
-    });
-
-    // BELANGRIJK: Voor telefoons en wisselen van tabbladen.
-    // Als de gebruiker de app minimaliseert of een andere tab opent, gaan we direct offline!
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            updatePresence('online');
-        } else {
-            updatePresence('offline');
-            if(activeChatId) updateTyping(false);
-        }
-    });
-    
-    // Extra zekerheid voor iOS Safari (pagehide is betrouwbaarder dan beforeunload op iPhones)
-    window.addEventListener('pagehide', () => {
-        updatePresence('offline');
+        db.collection("users").doc(user.uid).update({ status: 'offline', lastSeen: firebase.firestore.FieldValue.serverTimestamp() });
         if(activeChatId) updateTyping(false);
     });
 }
 
-// Hulpscript om de status snel en veilig naar de database te schrijven
-function updatePresence(status) {
-    if(user) {
-        db.collection("users").doc(user.uid).update({ 
-            status: status, 
-            lastSeen: firebase.firestore.FieldValue.serverTimestamp() 
-        }).catch(err => {
-            console.warn("Kon status niet opslaan:", err);
-        });
-    }
-}
 function updatePresence(status) { 
     if(user) db.collection("users").doc(user.uid).update({ 
         status: status, 

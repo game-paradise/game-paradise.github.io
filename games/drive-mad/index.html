@@ -4,15 +4,79 @@
     <meta charset="utf-8" />
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <title>Game Paradise - Drive Mad</title>
+    
+    <link rel="icon" type="image/png" href="icon/favicon.png">
+    <link rel="apple-touch-icon" href="icon/favicon.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2563eb">
+
+    <meta name="description" content="Speel Drive Mad op Game Paradise" />
+    <meta name="google" content="notranslate" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
+    
+    <link rel="stylesheet" href="webapp/fancade.css" />
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js')
+            .then(reg => console.log('Service Worker geregistreerd!'))
+            .catch(err => console.error('Service Worker mislukt:', err));
+        });
+      }
+    </script>
+
+    <style>
+        /* PWA Terugknop Style */
+        .pwa-back-button {
+            position: fixed;
+            top: env(safe-area-inset-top, 20px); /* Rekening houden met iPhone notch */
+            left: 20px;
+            background: rgba(37, 99, 235, 0.9);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 12px 20px;
+            border-radius: 50px;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            font-weight: bold;
+            text-decoration: none;
+            z-index: 999999; /* Zorg dat hij boven de game blijft */
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            transition: transform 0.2s;
+        }
+
+        .pwa-back-button:active {
+            transform: scale(0.95);
+        }
+
+        /* Verberg de knop in de normale browser, toon alleen in PWA-modus */
+        @media (display-mode: browser) {
+            .pwa-back-button {
+                display: none;
+            }
+        }
+
+        /* Extra styling voor game container */
+        #canvas_border {
+            background-color: #000;
+        }
+    </style>
+
     <script type="text/javascript" src="Jump_Gamemonetize.js"></script>
     <script src="/js/main.js"></script>
-    <meta name="description" content="" />
-    <meta name="google" content="notranslate" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-    <link rel="stylesheet" href="webapp/fancade.css" />
-   <link rel="icon" type="image/png" href="/icon/favicon.png">
   </head>
+
   <body id="body">
+    <a href="index.html" class="pwa-back-button">
+        <span style="font-size: 1.2rem;">🏠</span> 
+        <span>Terug naar Home</span>
+    </a>
+
     <div id="modal_parent">
       <div id="modal_content">
         <span id="modal_close_button">&times;</span>
@@ -20,26 +84,30 @@
         <div id="share_file_modal_content" class="modal_inner"></div>
       </div>
     </div>
+
     <div id="canvas_border" class="emscripten_border">
       <div id="play_content" class="middle center">
         <div class="edge">
           <div class="box">
             <div class="black">
-              <img src="webapp/cover.jpg" class="cover" />
+              <img src="webapp/cover.jpg" class="cover" alt="Drive Mad Cover" />
               <p class="title">Drive Mad</p>
               <p class="author">Martin Magni</p>
             </div>
           </div>
         </div>
-        <div id="progress_or_play"><progress id="progress" class="loading" value="0" max="100"></progress></div>
+        <div id="progress_or_play">
+            <progress id="progress" class="loading" value="0" max="100"></progress>
+        </div>
         <p class="description"></p>
       </div>
+
       <canvas class="emscripten" id="canvas" tabindex="-1"></canvas>
       <div id="gradient"></div>
       <div id="webview_content"></div>
     </div>
+
     <script type="text/javascript" src="webapp/source_min.js"></script>
     <script type="text/javascript" src="webapp/index.js"></script>
   </body>
 </html>
-<!-- Thanks EvilMonke#0263! -->

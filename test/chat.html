@@ -1003,6 +1003,43 @@ function setupListener(id, name, pic, type, ref) {
         
         cData.timestamp = time;
         
+        // Check of de browser daadwerkelijk open en in focus is
+        const isFocused = document.hasFocus();
+
+        if (activeChatId === id && isFocused) {
+            // Gebruiker kijkt LIVE naar deze chat: markeer als gelezen, stuur geen notificatie
+            if (time > lastRead) {
+                readStatus.set(id, time);
+                db.collection("users").doc(user.uid).collection("readStatus").doc(id).set({
+                    lastRead: time
+                });
+            }
+            cData.unread = false;
+        } else if (m.uid !== user.uid && time > lastRead) {
+            // Chat is ongelezen! (Want de gebruiker zit in een andere chat, OF het scherm is geminimaliseerd/ander tabblad)
+            cData.unread = true;
+            if(type !== 'global' && !ignoreInitialGroups) {
+                notify(name, m.type === 'system' ? m.text : (m.text || "Foto"), pic, id, type);
+                flashTitle("Nieuw bericht!");
+                playNotificationSound();
+            }
+        }
+        
+        chatDataMap.set(id, cData);
+        hasLoadedChats = true;
+        renderSidebar();
+    });
+}
+
+    ref.orderBy("timestamp", "desc").limit(1).onSnapshot(snap => {
+        if(snap.empty) { renderSidebar(); return; }
+        const m = snap.docs[0].data();
+        const time = m.timestamp ? m.timestamp.toMillis() : Date.now();
+        const cData = chatDataMap.get(id);
+        const lastRead = readStatus.get(id) || 0;
+        
+        cData.timestamp = time;
+        
        // Check of de browser daadwerkelijk open en in focus is
         const isFocused = document.hasFocus();
 

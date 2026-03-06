@@ -760,6 +760,32 @@ function loadPinnedChats() {
             pinnedChats = doc.data().pinnedChats;
             renderSidebar();
         }
+        // Voeg dit toe onderaan initApp()
+    setInterval(() => {
+        let changed = false;
+        const now = Date.now();
+        
+        chatDataMap.forEach((c, id) => {
+            if (c.type === 'private' && c.online) {
+                // Als ze langer dan 2 minuten (120000 ms) niet gezien zijn
+                if ((now - c.lastSeen) >= 120000) {
+                    c.online = false;
+                    chatDataMap.set(id, c);
+                    changed = true;
+                    
+                    // Update ook de header als deze chat momenteel open staat
+                    if(activeChatId === id) {
+                        const statusEl = document.getElementById('activeStatus');
+                        statusEl.innerText = 'Offline';
+                        statusEl.style.color = 'gray';
+                    }
+                }
+            }
+        });
+        
+        // Render de zijbalk opnieuw als er iemand offline is gegaan
+        if (changed) renderSidebar();
+    }, 30000); // Checkt elke 30 seconden
     });
 }
 
@@ -893,7 +919,7 @@ async function subscribeToChats() {
             const data = s.data();
             const now = Date.now();
             const lastSeen = data.lastSeen ? data.lastSeen.toMillis() : 0;
-            const isOnline = (now - lastSeen) < 120000;
+            const isOnline = (data.status === 'online') && ((now - lastSeen) < 120000);
             
             if(chatDataMap.has(doc.id)) {
                 const c = chatDataMap.get(doc.id);

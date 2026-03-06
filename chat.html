@@ -648,14 +648,50 @@ function isAdmin() {
 
 function startPresenceSystem() {
     if(!user) return;
+    
+    // Zet de status direct op online zodra je bent ingelogd
     updatePresence('online');
-    setInterval(() => { updatePresence('online'); }, 60000);
+    
+    // Vertel Firebase elke 60 seconden dat we er nog zijn
+    setInterval(() => { 
+        updatePresence('online'); 
+    }, 60000);
+    
+    // Als het tabblad gesloten wordt of de browser ververst:
     window.addEventListener('beforeunload', () => {
-        db.collection("users").doc(user.uid).update({ status: 'offline', lastSeen: firebase.firestore.FieldValue.serverTimestamp() });
+        updatePresence('offline');
+        if(activeChatId) updateTyping(false);
+    });
+
+    // BELANGRIJK: Voor telefoons en wisselen van tabbladen.
+    // Als de gebruiker de app minimaliseert of een andere tab opent, gaan we direct offline!
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            updatePresence('online');
+        } else {
+            updatePresence('offline');
+            if(activeChatId) updateTyping(false);
+        }
+    });
+    
+    // Extra zekerheid voor iOS Safari (pagehide is betrouwbaarder dan beforeunload op iPhones)
+    window.addEventListener('pagehide', () => {
+        updatePresence('offline');
         if(activeChatId) updateTyping(false);
     });
 }
 
+// Hulpscript om de status snel en veilig naar de database te schrijven
+function updatePresence(status) {
+    if(user) {
+        db.collection("users").doc(user.uid).update({ 
+            status: status, 
+            lastSeen: firebase.firestore.FieldValue.serverTimestamp() 
+        }).catch(err => {
+            console.warn("Kon status niet opslaan:", err);
+        });
+    }
+}
 function updatePresence(status) { 
     if(user) db.collection("users").doc(user.uid).update({ 
         status: status, 
@@ -724,6 +760,32 @@ function loadPinnedChats() {
             pinnedChats = doc.data().pinnedChats;
             renderSidebar();
         }
+        // Voeg dit toe onderaan initApp()
+    setInterval(() => {
+        let changed = false;
+        const now = Date.now();
+        
+        chatDataMap.forEach((c, id) => {
+            if (c.type === 'private' && c.online) {
+                // Als ze langer dan 2 minuten (120000 ms) niet gezien zijn
+                if ((now - c.lastSeen) >= 120000) {
+                    c.online = false;
+                    chatDataMap.set(id, c);
+                    changed = true;
+                    
+                    // Update ook de header als deze chat momenteel open staat
+                    if(activeChatId === id) {
+                        const statusEl = document.getElementById('activeStatus');
+                        statusEl.innerText = 'Offline';
+                        statusEl.style.color = 'gray';
+                    }
+                }
+            }
+        });
+        
+        // Render de zijbalk opnieuw als er iemand offline is gegaan
+        if (changed) renderSidebar();
+    }, 30000); // Checkt elke 30 seconden
     });
 }
 
@@ -853,22 +915,26 @@ async function subscribeToChats() {
         setupListener(doc.id, doc.data().name, doc.data().pic, 'private', db.collection("private_chats").doc(chatId).collection("messages"));
         
         db.collection("users").doc(doc.id).onSnapshot(s => {
+            if (!s.exists) return; // Voorkom crashes als een doc niet bestaat
             const data = s.data();
             const now = Date.now();
             const lastSeen = data.lastSeen ? data.lastSeen.toMillis() : 0;
-            const isOnline = (now - lastSeen) < 120000; 
+            const isOnline = (data.status === 'online') && ((now - lastSeen) < 120000);
             
             if(chatDataMap.has(doc.id)) {
                 const c = chatDataMap.get(doc.id);
-                c.name = data.name; c.online = isOnline; c.pic = data.pic || c.pic;
-                chatDataMap.set(doc.id, c); renderSidebar();
+                c.name = data.name;
+                c.online = isOnline;
+                c.lastSeen = lastSeen; // NIEUW: Bewaar de exacte tijd lokaal!
+                c.pic = data.pic || c.pic;
+                chatDataMap.set(doc.id, c);
+                
+                renderSidebar();
                 
                 if(activeChatId === doc.id) {
                     document.getElementById('activeStatus').style.display = 'block';
                     document.getElementById('activeStatus').innerText = isOnline ? 'Online' : 'Offline';
                     document.getElementById('activeStatus').style.color = isOnline ? 'var(--online)' : 'gray';
-                    document.getElementById('activeChatName').innerText = c.name;
-                    document.getElementById('activeChatImg').src = c.pic;
                 }
             }
         });

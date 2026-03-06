@@ -611,19 +611,8 @@ function checkProfanity(text) {
     const allBadWords = [...badWords, ...firebaseBannedWords];
     return allBadWords.some(word => text.toLowerCase().includes(word)); 
 }
+
     
-function showDesktopNotification(sender, text, chatId) {
-    // Toon melding als venster niet actief is OF als je in een andere chat zit
-    if (document.visibilityState !== 'visible' || activeChatId !== chatId) {
-        if ("Notification" in window && Notification.permission === "granted") {
-            const n = new Notification(`Nieuw bericht van ${sender}`, {
-                body: text || "Afbeelding ontvangen",
-                icon: 'icon/favicon.png'
-            });
-            n.onclick = () => { window.focus(); n.close(); };
-        }
-    }
-}
 // STATE
 let user = null;
 let activeChatId = null;
@@ -650,7 +639,7 @@ let readStatusLoaded = false;
 // Reply & Edit State
 let replyContext = null; 
 let editMessageId = null; 
-}
+
 
 // --- MOBIELE MENU FUNCTIE ---
 function toggleSidebar(forceOpen = null) {

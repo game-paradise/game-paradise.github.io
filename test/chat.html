@@ -8,8 +8,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
     <link rel="icon" type="image/png" href="/icon/favicon.png">
-    <link rel="apple-touch-icon" href="icon/favicon.png">
-    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="/icon/favicon.png">
+    <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#2563eb">
 
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -611,7 +611,19 @@ function checkProfanity(text) {
     const allBadWords = [...badWords, ...firebaseBannedWords];
     return allBadWords.some(word => text.toLowerCase().includes(word)); 
 }
-
+    
+function showDesktopNotification(sender, text, chatId) {
+    // Toon melding als venster niet actief is OF als je in een andere chat zit
+    if (document.visibilityState !== 'visible' || activeChatId !== chatId) {
+        if ("Notification" in window && Notification.permission === "granted") {
+            const n = new Notification(`Nieuw bericht van ${sender}`, {
+                body: text || "Afbeelding ontvangen",
+                icon: 'icon/favicon.png'
+            });
+            n.onclick = () => { window.focus(); n.close(); };
+        }
+    }
+}
 // STATE
 let user = null;
 let activeChatId = null;
@@ -638,23 +650,6 @@ let readStatusLoaded = false;
 // Reply & Edit State
 let replyContext = null; 
 let editMessageId = null; 
-
-    function showDesktopNotification(sender, text, chatId) {
-    // Toon alleen als het venster niet actief is óf als de gebruiker in een andere chat zit
-    if (document.visibilityState !== 'visible' || activeChatId !== chatId) {
-        if ("Notification" in window && Notification.permission === "granted") {
-            const options = {
-                body: text,
-                icon: 'icon/favicon.png',
-                silent: false
-            };
-            const n = new Notification(`Nieuw bericht van ${sender}`, options);
-            n.onclick = function() {
-                window.focus();
-                n.close();
-            };
-        }
-    }
 }
 
 // --- MOBIELE MENU FUNCTIE ---

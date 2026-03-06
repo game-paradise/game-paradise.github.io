@@ -10,61 +10,61 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2563eb">
 
-    <meta name="description" content="Speel Drive Mad op Game Paradise" />
-    <meta name="google" content="notranslate" />
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
-    
     <link rel="stylesheet" href="webapp/fancade.css" />
 
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('sw.js')
-            .then(reg => console.log('Service Worker geregistreerd!'))
-            .catch(err => console.error('Service Worker mislukt:', err));
+            .then(reg => console.log('SW geregistreerd!'))
+            .catch(err => console.error('SW mislukt:', err));
         });
       }
     </script>
 
     <style>
-        /* PWA Terugknop Style */
+        /* De subtiele PWA Home-knop */
         .pwa-back-button {
             position: fixed;
-            top: env(safe-area-inset-top, 20px); /* Rekening houden met iPhone notch */
-            left: 20px;
-            background: rgba(37, 99, 235, 0.9);
-            color: white;
-            border: 1px solid rgba(255,255,255,0.2);
-            padding: 12px 20px;
-            border-radius: 50px;
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            font-weight: bold;
+            /* Echt strak in de hoek, rekening houdend met notches op telefoons */
+            top: env(safe-area-inset-top, 10px); 
+            left: env(safe-area-inset-left, 10px);
+            
+            /* Design: Klein en doorzichtig */
+            background: rgba(255, 255, 255, 0.15); 
+            color: rgba(255, 255, 255, 0.7);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 12px;
+            font-weight: 600;
             text-decoration: none;
-            z-index: 999999; /* Zorg dat hij boven de game blijft */
+            z-index: 999999; /* Altijd bovenop het game canvas */
             cursor: pointer;
-            backdrop-filter: blur(8px);
+            backdrop-filter: blur(4px); /* Glas-effect */
             display: flex;
             align-items: center;
-            gap: 10px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-            transition: transform 0.2s;
+            gap: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.2s ease;
         }
 
-        .pwa-back-button:active {
-            transform: scale(0.95);
+        /* Iets duidelijker bij hover/klik */
+        .pwa-back-button:hover, .pwa-back-button:active {
+            background: rgba(37, 99, 235, 0.5);
+            color: white;
+            transform: scale(1.05);
         }
 
-        /* Verberg de knop in de normale browser, toon alleen in PWA-modus */
+        /* Verberg de knop in een gewone browser, toon hem alleen als WebApp */
         @media (display-mode: browser) {
             .pwa-back-button {
                 display: none;
             }
         }
 
-        /* Extra styling voor game container */
-        #canvas_border {
-            background-color: #000;
-        }
+        body { background-color: #000; margin: 0; padding: 0; overflow: hidden; }
     </style>
 
     <script type="text/javascript" src="Jump_Gamemonetize.js"></script>
@@ -72,9 +72,10 @@
   </head>
 
   <body id="body">
-    <a href="index.html" class="pwa-back-button">
-        <span style="font-size: 1.2rem;">🏠</span> 
-        <span>Terug naar Home</span>
+    
+    <a href="/index.html" class="pwa-back-button">
+        <span style="font-size: 14px;">←</span> 
+        <span>Home</span>
     </a>
 
     <div id="modal_parent">
@@ -90,7 +91,7 @@
         <div class="edge">
           <div class="box">
             <div class="black">
-              <img src="webapp/cover.jpg" class="cover" alt="Drive Mad Cover" />
+              <img src="webapp/cover.jpg" class="cover" />
               <p class="title">Drive Mad</p>
               <p class="author">Martin Magni</p>
             </div>
@@ -99,7 +100,6 @@
         <div id="progress_or_play">
             <progress id="progress" class="loading" value="0" max="100"></progress>
         </div>
-        <p class="description"></p>
       </div>
 
       <canvas class="emscripten" id="canvas" tabindex="-1"></canvas>

@@ -889,22 +889,26 @@ async function subscribeToChats() {
         setupListener(doc.id, doc.data().name, doc.data().pic, 'private', db.collection("private_chats").doc(chatId).collection("messages"));
         
         db.collection("users").doc(doc.id).onSnapshot(s => {
+            if (!s.exists) return; // Voorkom crashes als een doc niet bestaat
             const data = s.data();
             const now = Date.now();
             const lastSeen = data.lastSeen ? data.lastSeen.toMillis() : 0;
-            const isOnline = (now - lastSeen) < 120000; 
+            const isOnline = (now - lastSeen) < 120000;
             
             if(chatDataMap.has(doc.id)) {
                 const c = chatDataMap.get(doc.id);
-                c.name = data.name; c.online = isOnline; c.pic = data.pic || c.pic;
-                chatDataMap.set(doc.id, c); renderSidebar();
+                c.name = data.name;
+                c.online = isOnline;
+                c.lastSeen = lastSeen; // NIEUW: Bewaar de exacte tijd lokaal!
+                c.pic = data.pic || c.pic;
+                chatDataMap.set(doc.id, c);
+                
+                renderSidebar();
                 
                 if(activeChatId === doc.id) {
                     document.getElementById('activeStatus').style.display = 'block';
                     document.getElementById('activeStatus').innerText = isOnline ? 'Online' : 'Offline';
                     document.getElementById('activeStatus').style.color = isOnline ? 'var(--online)' : 'gray';
-                    document.getElementById('activeChatName').innerText = c.name;
-                    document.getElementById('activeChatImg').src = c.pic;
                 }
             }
         });

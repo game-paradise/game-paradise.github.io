@@ -3,7 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <title>Game Paradise - Chat</title>
-    <link rel="icon" type="image/png" href="/icon/favicon.png">
+   <link rel="icon" type="image/png" href="icon/favicon.png">
+<link rel="apple-touch-icon" href="icon/favicon.png">
+<link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
+
+<script>
+  // Dit zorgt ervoor dat de browser de app-bestanden registreert
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('Service Worker geregistreerd!', reg))
+        .catch(err => console.error('Service Worker mislukt:', err));
+    });
+  }
+</script>
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
@@ -663,15 +678,13 @@ function startPresenceSystem() {
         if(activeChatId) updateTyping(false);
     });
 
-    // BELANGRIJK: Voor telefoons en wisselen van tabbladen.
-    // Als de gebruiker de app minimaliseert of een andere tab opent, gaan we direct offline!
+    // Alleen online gaan als tabblad weer zichtbaar wordt, niet offline bij minimaliseren
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
             updatePresence('online');
-        } else {
-            updatePresence('offline');
-            if(activeChatId) updateTyping(false);
         }
+    });
+}
     });
     
     // Extra zekerheid voor iOS Safari (pagehide is betrouwbaarder dan beforeunload op iPhones)
@@ -1617,6 +1630,53 @@ async function handleImageSend(input) {
     }
 }
 
+// Drag and drop + paste image support
+const messageInput = document.getElementById('messageInput');
+const inputArea = document.querySelector('.chat-input');
+
+if (messageInput && inputArea) {
+    // Drag and drop
+    inputArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        inputArea.style.background = '#1e3a5f';
+        inputArea.style.border = '2px dashed #60a5fa';
+    });
+    
+    inputArea.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        inputArea.style.background = '';
+        inputArea.style.border = '';
+    });
+    
+    inputArea.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        inputArea.style.background = '';
+        inputArea.style.border = '';
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type.startsWith('image/')) {
+            const compressed = await resizeAndCompressImage(files[0]);
+            pushMsg({ image: compressed });
+            notify("Afbeelding verstuurd!", "");
+        }
+    });
+    
+    // Paste with Ctrl+V or Cmd+V
+    messageInput.addEventListener('paste', async (e) => {
+        const items = e.clipboardData.items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                e.preventDefault();
+                const file = items[i].getAsFile();
+                const compressed = await resizeAndCompressImage(file);
+                pushMsg({ image: compressed });
+                notify("Afbeelding verstuurd!", "");
+                break;
+            }
+        }
+    });
+}
+
 async function sendMessage() {
     const inp = document.getElementById('messageInput');
     const txt = inp.value.trim();
@@ -1842,16 +1902,12 @@ function notify(title, body, icon, chatId, type) {
         }
     }
 
-    // 2. De Desktop Notificatie (Windows/Mac/Safari)
+    // 2. De Desktop Notificatie (Windows/Mac/Safari) - Altijd sturen behalve als je in dezelfde chat zit en het venster actief is
     if ("Notification" in window && Notification.permission === "granted") {
-        // BELANGRIJK: We sturen de melding als:
-        // - Het tabblad verborgen is (document.hidden)
-        // - OF als de browser geen focus heeft (!document.hasFocus())
-        // - OF als je in een andere chat zit dan waar het bericht vandaan komt
-        const isOutside = document.hidden || !document.hasFocus();
-        const isDifferentChat = activeChatId !== chatId;
+        // Stuur melding tenzij: je in de juiste chat zit EN het venster actief is
+        const isActiveInChat = activeChatId === chatId && document.hasFocus();
 
-        if (isOutside || isDifferentChat) {
+        if (!isActiveInChat) {
             const n = new Notification(title, { 
                 body: body, 
                 icon: icon || "https://ui-avatars.com/api/?name=Chat" 

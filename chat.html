@@ -1,19 +1,35 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
+    <head>
     <meta charset="UTF-8">
     <title>Game Paradise - Chat</title>
-   <link rel="icon" type="image/png" href="icon/favicon.png">
-<link rel="apple-touch-icon" href="icon/favicon.png">
-<link rel="manifest" href="manifest.json">
-    <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#2563eb">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
+    <link rel="icon" type="image/png" href="/icon/favicon.png">
+    <link rel="apple-touch-icon" href="/icon/favicon.png">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#2563eb">
+
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js')
+            .then(reg => console.log('PWA: Service Worker actief'))
+            .catch(err => console.log('PWA: Service Worker wacht...'));
+        });
+      }
+    </script>
 <script>
   // Dit zorgt ervoor dat de browser de app-bestanden registreert
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js')
+      navigator.serviceWorker.register('/sw.js')
         .then(reg => console.log('Service Worker geregistreerd!', reg))
         .catch(err => console.error('Service Worker mislukt:', err));
     });
@@ -623,6 +639,24 @@ let readStatusLoaded = false;
 let replyContext = null; 
 let editMessageId = null; 
 
+    function showDesktopNotification(sender, text, chatId) {
+    // Toon alleen als het venster niet actief is óf als de gebruiker in een andere chat zit
+    if (document.visibilityState !== 'visible' || activeChatId !== chatId) {
+        if ("Notification" in window && Notification.permission === "granted") {
+            const options = {
+                body: text,
+                icon: 'icon/favicon.png',
+                silent: false
+            };
+            const n = new Notification(`Nieuw bericht van ${sender}`, options);
+            n.onclick = function() {
+                window.focus();
+                n.close();
+            };
+        }
+    }
+}
+
 // --- MOBIELE MENU FUNCTIE ---
 function toggleSidebar(forceOpen = null) {
     const sidebar = document.getElementById('sidebar');
@@ -664,36 +698,29 @@ function isAdmin() {
 function startPresenceSystem() {
     if(!user) return;
     
-    // Zet de status direct op online zodra je bent ingelogd
+    // Direct online gaan
     updatePresence('online');
-    
-    // Vertel Firebase elke 60 seconden dat we er nog zijn
-    setInterval(() => { 
-        updatePresence('online'); 
+
+    // Vraag toestemming voor notificaties bij opstarten
+    if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+    }
+
+    // Update elke minuut om de verbinding levend te houden
+    setInterval(() => {
+        if(user) updatePresence('online');
     }, 60000);
-    
-    // Als het tabblad gesloten wordt of de browser ververst:
+
+    // Alleen offline gaan bij het echt sluiten van de tab/browser
     window.addEventListener('beforeunload', () => {
         updatePresence('offline');
-        if(activeChatId) updateTyping(false);
-    });
-
-    // BELANGRIJK: Voor telefoons en wisselen van tabbladen.
-    // Als de gebruiker de app minimaliseert of een andere tab opent, gaan we direct offline!
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            updatePresence('online');
-        } else {
-            updatePresence('offline');
-            if(activeChatId) updateTyping(false);
-        }
     });
     
-    // Extra zekerheid voor iOS Safari (pagehide is betrouwbaarder dan beforeunload op iPhones)
     window.addEventListener('pagehide', () => {
         updatePresence('offline');
-        if(activeChatId) updateTyping(false);
     });
+
+    // We verwijderen de 'visibilitychange' listener die je offline zette bij minimaliseren
 }
 
 // Hulpscript om de status snel en veilig naar de database te schrijven
@@ -1632,6 +1659,53 @@ async function handleImageSend(input) {
     }
 }
 
+// Drag and drop + paste image support
+const messageInput = document.getElementById('messageInput');
+const inputArea = document.querySelector('.chat-input');
+
+if (messageInput && inputArea) {
+    // Drag and drop
+    inputArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        inputArea.style.background = '#1e3a5f';
+        inputArea.style.border = '2px dashed #60a5fa';
+    });
+    
+    inputArea.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        inputArea.style.background = '';
+        inputArea.style.border = '';
+    });
+    
+    inputArea.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        inputArea.style.background = '';
+        inputArea.style.border = '';
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type.startsWith('image/')) {
+            const compressed = await resizeAndCompressImage(files[0]);
+            pushMsg({ image: compressed });
+            notify("Afbeelding verstuurd!", "");
+        }
+    });
+    
+    // Paste with Ctrl+V or Cmd+V
+    messageInput.addEventListener('paste', async (e) => {
+        const items = e.clipboardData.items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                e.preventDefault();
+                const file = items[i].getAsFile();
+                const compressed = await resizeAndCompressImage(file);
+                pushMsg({ image: compressed });
+                notify("Afbeelding verstuurd!", "");
+                break;
+            }
+        }
+    });
+}
+
 async function sendMessage() {
     const inp = document.getElementById('messageInput');
     const txt = inp.value.trim();
@@ -1857,16 +1931,12 @@ function notify(title, body, icon, chatId, type) {
         }
     }
 
-    // 2. De Desktop Notificatie (Windows/Mac/Safari)
+    // 2. De Desktop Notificatie (Windows/Mac/Safari) - Altijd sturen behalve als je in dezelfde chat zit en het venster actief is
     if ("Notification" in window && Notification.permission === "granted") {
-        // BELANGRIJK: We sturen de melding als:
-        // - Het tabblad verborgen is (document.hidden)
-        // - OF als de browser geen focus heeft (!document.hasFocus())
-        // - OF als je in een andere chat zit dan waar het bericht vandaan komt
-        const isOutside = document.hidden || !document.hasFocus();
-        const isDifferentChat = activeChatId !== chatId;
+        // Stuur melding tenzij: je in de juiste chat zit EN het venster actief is
+        const isActiveInChat = activeChatId === chatId && document.hasFocus();
 
-        if (isOutside || isDifferentChat) {
+        if (!isActiveInChat) {
             const n = new Notification(title, { 
                 body: body, 
                 icon: icon || "https://ui-avatars.com/api/?name=Chat" 
@@ -2218,6 +2288,46 @@ function sendGif(url) {
     
     notify("GIF verstuurd!", "");
 }
+    // Wacht tot de DOM geladen is om de textarea te vinden
+document.addEventListener('DOMContentLoaded', () => {
+    const msgInput = document.getElementById('messageInput');
+    if (!msgInput) return;
+
+    // 1. Plakken (Ctrl+V)
+    msgInput.addEventListener('paste', function(e) {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let index in items) {
+            const item = items[index];
+            if (item.kind === 'file' && item.type.indexOf('image/') !== -1) {
+                const blob = item.getAsFile();
+                // Gebruik je bestaande handleImageSend functie
+                handleImageSend({ files: [blob] });
+            }
+        }
+    });
+
+    // 2. Slepen en Neerzetten (Drag & Drop)
+    msgInput.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        msgInput.style.border = "2px dashed var(--primary)"; // Visuele hint
+    });
+
+    msgInput.addEventListener('dragleave', () => {
+        msgInput.style.border = "1px solid #1e293b"; // Herstel border
+    });
+
+    msgInput.addEventListener('drop', (e) => {
+        e.preventDefault();
+        msgInput.style.border = "1px solid #1e293b";
+        
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            const file = e.dataTransfer.files[0];
+            if (file.type.startsWith('image/')) {
+                handleImageSend({ files: [file] });
+            }
+        }
+    });
+});
 </script>
 <script>var d=document,w="https://tally.so/widgets/embed.js",v=function(){"undefined"!=typeof Tally?Tally.loadEmbeds():d.querySelectorAll("iframe[data-tally-src]:not([src])").forEach((function(e){e.src=e.dataset.tallySrc}))};if("undefined"!=typeof Tally)v();else if(d.querySelector('script[src="'+w+'"]')==null){var s=d.createElement("script");s.src=w,s.onload=v,s.onerror=v,d.body.appendChild(s);}</script>
 </body>

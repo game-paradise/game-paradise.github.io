@@ -639,6 +639,24 @@ let readStatusLoaded = false;
 let replyContext = null; 
 let editMessageId = null; 
 
+    function showDesktopNotification(sender, text, chatId) {
+    // Toon alleen als het venster niet actief is óf als de gebruiker in een andere chat zit
+    if (document.visibilityState !== 'visible' || activeChatId !== chatId) {
+        if ("Notification" in window && Notification.permission === "granted") {
+            const options = {
+                body: text,
+                icon: 'icon/favicon.png',
+                silent: false
+            };
+            const n = new Notification(`Nieuw bericht van ${sender}`, options);
+            n.onclick = function() {
+                window.focus();
+                n.close();
+            };
+        }
+    }
+}
+
 // --- MOBIELE MENU FUNCTIE ---
 function toggleSidebar(forceOpen = null) {
     const sidebar = document.getElementById('sidebar');
@@ -680,34 +698,29 @@ function isAdmin() {
 function startPresenceSystem() {
     if(!user) return;
     
-    // Zet de status direct op online zodra je bent ingelogd
+    // Direct online gaan
     updatePresence('online');
-    
-    // Vertel Firebase elke 60 seconden dat we er nog zijn
-    setInterval(() => { 
-        updatePresence('online'); 
+
+    // Vraag toestemming voor notificaties bij opstarten
+    if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+    }
+
+    // Update elke minuut om de verbinding levend te houden
+    setInterval(() => {
+        if(user) updatePresence('online');
     }, 60000);
-    
-    // Als het tabblad gesloten wordt of de browser ververst:
+
+    // Alleen offline gaan bij het echt sluiten van de tab/browser
     window.addEventListener('beforeunload', () => {
         updatePresence('offline');
-        if(activeChatId) updateTyping(false);
-    });
-
-    // Alleen online gaan als tabblad weer zichtbaar wordt, niet offline bij minimaliseren
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            updatePresence('online');
-        }
-    });
-}
     });
     
-    // Extra zekerheid voor iOS Safari (pagehide is betrouwbaarder dan beforeunload op iPhones)
     window.addEventListener('pagehide', () => {
         updatePresence('offline');
-        if(activeChatId) updateTyping(false);
     });
+
+    // We verwijderen de 'visibilitychange' listener die je offline zette bij minimaliseren
 }
 
 // Hulpscript om de status snel en veilig naar de database te schrijven
@@ -2275,6 +2288,46 @@ function sendGif(url) {
     
     notify("GIF verstuurd!", "");
 }
+    // Wacht tot de DOM geladen is om de textarea te vinden
+document.addEventListener('DOMContentLoaded', () => {
+    const msgInput = document.getElementById('messageInput');
+    if (!msgInput) return;
+
+    // 1. Plakken (Ctrl+V)
+    msgInput.addEventListener('paste', function(e) {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let index in items) {
+            const item = items[index];
+            if (item.kind === 'file' && item.type.indexOf('image/') !== -1) {
+                const blob = item.getAsFile();
+                // Gebruik je bestaande handleImageSend functie
+                handleImageSend({ files: [blob] });
+            }
+        }
+    });
+
+    // 2. Slepen en Neerzetten (Drag & Drop)
+    msgInput.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        msgInput.style.border = "2px dashed var(--primary)"; // Visuele hint
+    });
+
+    msgInput.addEventListener('dragleave', () => {
+        msgInput.style.border = "1px solid #1e293b"; // Herstel border
+    });
+
+    msgInput.addEventListener('drop', (e) => {
+        e.preventDefault();
+        msgInput.style.border = "1px solid #1e293b";
+        
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            const file = e.dataTransfer.files[0];
+            if (file.type.startsWith('image/')) {
+                handleImageSend({ files: [file] });
+            }
+        }
+    });
+});
 </script>
 <script>var d=document,w="https://tally.so/widgets/embed.js",v=function(){"undefined"!=typeof Tally?Tally.loadEmbeds():d.querySelectorAll("iframe[data-tally-src]:not([src])").forEach((function(e){e.src=e.dataset.tallySrc}))};if("undefined"!=typeof Tally)v();else if(d.querySelector('script[src="'+w+'"]')==null){var s=d.createElement("script");s.src=w,s.onload=v,s.onerror=v,d.body.appendChild(s);}</script>
 </body>

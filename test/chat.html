@@ -1003,15 +1003,27 @@ function setupListener(id, name, pic, type, ref) {
         
         cData.timestamp = time;
         
-        // Only mark as unread if chat is NOT active OR page is hidden
-        if (activeChatId === id && !document.hasFocus()) {
-            // Chat is open and visible - mark as read
+       // Check of de browser daadwerkelijk open en in focus is
+        const isFocused = document.hasFocus();
+
+        if (activeChatId === id && isFocused) {
+            // Gebruiker kijkt LIVE naar deze chat: markeer als gelezen, stuur geen notificatie
             if (time > lastRead) {
                 readStatus.set(id, time);
                 db.collection("users").doc(user.uid).collection("readStatus").doc(id).set({
                     lastRead: time
                 });
             }
+            cData.unread = false;
+        } else if (m.uid !== user.uid && time > lastRead) {
+            // Chat is ongelezen! (Want de gebruiker zit in een andere chat, OF het scherm is geminimaliseerd/ander tabblad)
+            cData.unread = true;
+            if(type !== 'global' && !ignoreInitialGroups) {
+                notify(name, m.type === 'system' ? m.text : (m.text || "Foto"), pic, id, type);
+                flashTitle("Nieuw bericht!");
+                playNotificationSound();
+            }
+        }
             cData.unread = false;
         } else if (m.uid !== user.uid && time > lastRead) {
             // Chat is not open - mark as unread if from someone else
@@ -1897,9 +1909,12 @@ async function kickMember(mid, mName) { await sendSystemMessage(`${mName} is ver
 async function transferOwner(newId, newName) { await sendSystemMessage(`${document.getElementById('myName').innerText} heeft ${newName} beheerder gemaakt.`); await db.collection("groups").doc(activeChatId).update({ owner: newId }); openChatSettings(); }
 
 function notify(title, body, icon, chatId, type) {
+    const isFocused = document.hasFocus();
+    const isInCorrectChat = activeChatId === chatId;
+
     // 1. De Toast (In-app melding)
-    // Deze tonen we alleen als we NIET in die specifieke chat zitten
-    if (activeChatId !== chatId) {
+    // Deze tonen we alleen als je IN de app zit te klikken, maar in een ANDERE chat zit.
+    if (!isInCorrectChat && isFocused) {
         const box = document.getElementById('toast-container');
         if (box) {
             const t = document.createElement('div');
@@ -1915,12 +1930,11 @@ function notify(title, body, icon, chatId, type) {
         }
     }
 
-    // 2. De Desktop Notificatie (Windows/Mac/Safari) - Altijd sturen behalve als je in dezelfde chat zit en het venster actief is
+    // 2. De Push Notificatie (Windows/Mac/Android/iOS)
+    // Altijd sturen als je venster GEEN focus heeft (geminimaliseerd, ander tabblad, andere app open), 
+    // OF als je de app wel open hebt, maar in een andere chat zit.
     if ("Notification" in window && Notification.permission === "granted") {
-        // Stuur melding tenzij: je in de juiste chat zit EN het venster actief is
-        const isActiveInChat = activeChatId === chatId && document.hasFocus();
-
-        if (!isActiveInChat) {
+        if (!isFocused || !isInCorrectChat) {
             const n = new Notification(title, { 
                 body: body, 
                 icon: icon || "https://ui-avatars.com/api/?name=Chat" 

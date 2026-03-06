@@ -1,21 +1,20 @@
 {
   "name": "Game Paradise",
   "short_name": "Game Paradise",
-  "description": "De officiële Game Paradise Chat & Games app",
-  "start_url": "index.html",
-  "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#2563eb",
   "icons": [
     {
-      "src": "/icon/favicon.png",
+      "src": "icon/favicon.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/icon/favicon.png",
+      "src": "icon/favicon.png",
       "sizes": "512x512",
       "type": "image/png"
     }
-  ]
+  ],
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#2563eb"
 }

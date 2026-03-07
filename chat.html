@@ -29,7 +29,7 @@
   // Dit zorgt ervoor dat de browser de app-bestanden registreert
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js')
+      navigator.serviceWorker.register('sw.js')
         .then(reg => console.log('Service Worker geregistreerd!', reg))
         .catch(err => console.error('Service Worker mislukt:', err));
     });
@@ -634,26 +634,44 @@ let sentRequestIds = new Set();
 let pinnedChats = []; 
 let readStatus = new Map(); // Unread status from Firestore
 let readStatusLoaded = false;
+let lastNotifiedMsgId = new Map(); // Track last notified message ID per chat
 
 // Reply & Edit State
 let replyContext = null; 
 let editMessageId = null; 
 
     function showDesktopNotification(sender, text, chatId) {
-    // Toon alleen als het venster niet actief is óf als de gebruiker in een andere chat zit
-    if (document.visibilityState !== 'visible' || activeChatId !== chatId) {
-        if ("Notification" in window && Notification.permission === "granted") {
-            const options = {
-                body: text,
-                icon: 'icon/favicon.png',
-                silent: false
-            };
-            const n = new Notification(`Nieuw bericht van ${sender}`, options);
-            n.onclick = function() {
-                window.focus();
-                n.close();
-            };
-        }
+    // Skip if tab is visible AND this is the active chat
+    if (!document.hidden && activeChatId === chatId) {
+        return;
+    }
+    
+    // Skip if another tab was recently active with this chat
+    const globalActiveChat = localStorage.getItem('currentActiveChat');
+    const lastActivity = parseInt(localStorage.getItem('lastActivity') || '0');
+    if (!document.hidden && (Date.now() - lastActivity) < 5000 && globalActiveChat === chatId) {
+        return;
+    }
+
+    if ("Notification" in window && Notification.permission === "granted") {
+        const options = {
+            body: text.length > 100 ? text.substring(0, 100) + '...' : text,
+            icon: 'icon/favicon.png',
+            badge: 'icon/favicon.png',
+            tag: chatId,
+            requireInteraction: false
+        };
+
+        const n = new Notification(`Nieuw bericht van ${sender}`, options);
+        
+        n.onclick = function() {
+            window.focus();
+            if (activeChatId !== chatId) {
+                openChat(chatId);
+            }
+            n.close();
+        };
+        setTimeout(() => n.close(), 5000);
     }
 }
 
@@ -670,6 +688,18 @@ function toggleSidebar(forceOpen = null) {
         overlay.classList.toggle('active');
     }
 }
+
+// Update localStorage activity on user interaction (for multi-tab notification sync)
+function updateActivity() {
+    if (activeChatId) {
+        localStorage.setItem('currentActiveChat', activeChatId);
+    }
+    localStorage.setItem('lastActivity', Date.now());
+}
+
+document.addEventListener('click', updateActivity);
+document.addEventListener('keydown', updateActivity);
+setInterval(updateActivity, 30000); // Also update every 30 seconds
 
 // INIT
 showSidebarSkeletons(); 
@@ -993,35 +1023,32 @@ function setupListener(id, name, pic, type, ref) {
     if(activeListeners.has(id)) return;
     activeListeners.add(id);
     if(!chatDataMap.has(id)) chatDataMap.set(id, { id, name, pic, type, timestamp: 0, unread: false, online: false });
-
-    if(type === 'group') {
-        db.collection("groups").doc(id).onSnapshot(snap => {
-            if(snap.exists) {
-                const d = snap.data();
-                const c = chatDataMap.get(id);
-                c.name = d.name; c.pic = d.pic;
-                chatDataMap.set(id, c);
-                if(activeChatId === id) {
-                    document.getElementById('activeChatName').innerText = d.name;
-                    document.getElementById('activeChatImg').src = d.pic || `https://ui-avatars.com/api/?name=${d.name}`;
-                }
-                renderSidebar();
-            }
-        });
-    }
-
+    
+    // We'll initialize lastNotifiedMsgId after first snapshot to avoid notifying for existing messages
+    let initialSnapshotHandled = false;
+    
     ref.orderBy("timestamp", "desc").limit(1).onSnapshot(snap => {
         if(snap.empty) { renderSidebar(); return; }
         const m = snap.docs[0].data();
+        const msgId = snap.docs[0].id; // Get message ID
         const time = m.timestamp ? m.timestamp.toMillis() : Date.now();
         const cData = chatDataMap.get(id);
         const lastRead = readStatus.get(id) || 0;
         
         cData.timestamp = time;
         
-        // Only mark as unread if chat is NOT active OR page is hidden
-        if (activeChatId === id && !document.hasFocus()) {
-            // Chat is open and visible - mark as read
+        // Initialize on first snapshot to avoid notifying for existing messages
+        if (!initialSnapshotHandled) {
+            lastNotifiedMsgId.set(id, msgId);
+            initialSnapshotHandled = true;
+        }
+        
+        const isActiveChat = activeChatId === id;
+        const isTabVisible = document.visibilityState === 'visible';
+        const isNewMessage = msgId !== lastNotifiedMsgId.get(id);
+        
+        // Only mark as read if chat is active AND tab is visible
+        if (isActiveChat && isTabVisible) {
             if (time > lastRead) {
                 readStatus.set(id, time);
                 db.collection("users").doc(user.uid).collection("readStatus").doc(id).set({
@@ -1030,12 +1057,24 @@ function setupListener(id, name, pic, type, ref) {
             }
             cData.unread = false;
         } else if (m.uid !== user.uid && time > lastRead) {
-            // Chat is not open - mark as unread if from someone else
             cData.unread = true;
+            
+            // In-app notification - always show
             if(type !== 'global' && !ignoreInitialGroups) {
                 notify(name, m.type==='system'?m.text:(m.text || "Foto"), pic, id, type);
                 flashTitle("Nieuw bericht!");
                 playNotificationSound();
+            }
+            
+            // Browser notification - ONLY when tab is hidden
+            if (m.uid !== user.uid && isNewMessage) {
+                // Only show browser notification if tab is hidden
+                if (document.hidden) {
+                    lastNotifiedMsgId.set(id, msgId);
+                    const senderName = m.senderName || name;
+                    const msgText = m.type === 'system' ? m.text : (m.text || "Foto");
+                    showDesktopNotification(senderName, msgText, id);
+                }
             }
         }
         chatDataMap.set(id, cData);
@@ -1271,6 +1310,16 @@ async function openChat(id, name, pic, type) {
     toggleSidebar(false);
     activeChatId = id; chatType = type;
     msgLimit = 50; 
+    
+    // Update global active chat in localStorage (for multi-tab support)
+    localStorage.setItem('currentActiveChat', id);
+    localStorage.setItem('lastActivity', Date.now());
+    
+    // Reset notification tracker for this chat so old messages don't notify
+    if (chatDataMap.has(id)) {
+        // Reset so next message will trigger notification
+        lastNotifiedMsgId.delete(id);
+    }
     
     // Direct markeren als gelezen
     markAsRead();

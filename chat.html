@@ -8,7 +8,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
     <link rel="icon" type="image/png" href="/icon/favicon.png">
-    <link rel="apple-touch-icon" href="/icon/favicon512x512.png">
+    <link rel="apple-touch-icon" href="/icon/favicon.png">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#2563eb">
 
@@ -61,6 +61,12 @@
             background: var(--bg); color: white; 
             display: flex;
             overscroll-behavior: none;
+        }
+        
+        @supports (height: 100dvh) {
+            html, body {
+                height: 100dvh;
+            }
         }
 
         a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
@@ -137,13 +143,13 @@
         }
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
 
-        .container { display: flex; width: 100%; height: 100%; position: relative; }
+        .container { display: flex; width: 100%; height: 100%; position: relative; overflow: hidden; }
 
         /* SIDEBAR */
         .sidebar { 
             width: 320px; background: var(--sidebar-bg); border-right: 1px solid #1e293b; 
             display: flex; flex-direction: column; z-index: 50; transition: transform 0.3s ease;
-            flex-shrink: 0;
+            flex-shrink: 0; overflow: hidden;
         }
         
         .sidebar-header { padding: 15px; background: var(--card-bg); display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #1e293b; }
@@ -198,9 +204,10 @@
     background: radial-gradient(circle at center, #0f172a, #020617); 
     width: 100%; 
     min-width: 0; /* VOEG DEZE TOE: Essentieel voor mobiel */
+    overflow: hidden;
 }
         .chat-header { padding: 10px 20px; background: var(--card-bg); display: flex; align-items: center; border-bottom: 1px solid #1e293b; height: 65px; gap: 10px; flex-shrink: 0; }
-        .chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
         
         /* Message & Avatar Layout */
         .msg-container {
@@ -267,7 +274,7 @@
         .msg:hover .opts-btn { display: flex; }
 
         /* INPUT AREA */
-        .chat-input { padding: 15px; background: var(--card-bg); display: flex; flex-direction:column; gap:0; border-top: 1px solid #1e293b; flex-shrink: 0; }
+        .chat-input { padding: 15px; background: var(--card-bg); display: flex; flex-direction:column; gap:0; border-top: 1px solid #1e293b; flex-shrink: 0; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
         
         #replyPreview {
             display: none; background: #1e293b; padding: 8px 15px; border-left: 4px solid var(--accent);
@@ -331,6 +338,7 @@
                 position: fixed; top: 0; left: 0; bottom: 0;
                 transform: translateX(-100%);
                 width: 280px; box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+                height: 100%; height: 100dvh;
             }
             .sidebar.active { transform: translateX(0); }
             
@@ -342,6 +350,30 @@
             .msg-container { max-width: 90%; }
             
             .modal-box { padding: 20px; }
+            
+            /* Mobile height fixes */
+            html, body {
+                height: 100%; height: 100dvh;
+                overflow: hidden;
+                position: fixed;
+            }
+            .container {
+                height: 100%; height: 100dvh;
+                overflow: hidden;
+            }
+            .main-chat {
+                height: 100%; height: 100dvh;
+                overflow: hidden;
+            }
+            .chat-messages {
+                flex: 1; min-height: 0;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .chat-input {
+                flex-shrink: 0;
+                padding-bottom: max(15px, env(safe-area-inset-bottom));
+            }
         }
         
         .emoji-tabs { display: flex; }

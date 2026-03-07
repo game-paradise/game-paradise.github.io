@@ -1,0 +1,2347 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <head>
+    <meta charset="UTF-8">
+    <title>Game Paradise - Chat</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+    <link rel="icon" type="image/png" href="icon/favicon.png">
+    <link rel="apple-touch-icon" href="icon/favicon.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2563eb">
+
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js')
+            .then(reg => console.log('PWA: Service Worker actief'))
+            .catch(err => console.log('PWA: Service Worker wacht...'));
+        });
+      }
+    </script>
+<script>
+  // Dit zorgt ervoor dat de browser de app-bestanden registreert
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('Service Worker geregistreerd!', reg))
+        .catch(err => console.error('Service Worker mislukt:', err));
+    });
+  }
+</script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    
+    <style>
+        :root {
+            --bg: #020617; --sidebar-bg: #010409; --card-bg: #0f172a;
+            --primary: #2563eb; --accent: #60a5fa; --text-dim: #94a3b8;
+            --sent: #172554; --received: #1e293b; --danger: #ef4444; --system: #334155;
+            --online: #22c55e; --offline: #64748b; --reply-bg: #0f172a;
+            --pending: #f59e0b;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        html, body {
+            margin: 0; padding: 0; width: 100%; 
+            height: 100vh; height: 100dvh; /* Safari fix */
+            overflow: hidden;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+            background: var(--bg); color: white; 
+            display: flex;
+            overscroll-behavior: none;
+        }
+
+        a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
+        a:hover { border-bottom: 1px solid var(--accent); }
+
+        /* MEDIA GALLERY GRID */
+        .media-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            padding: 10px;
+        }
+        .media-item {
+            width: 100%;
+            aspect-ratio: 1; 
+            object-fit: cover;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 1px solid #334155;
+            transition: transform 0.1s;
+            background: #1e293b;
+        }
+        .media-item:hover { transform: scale(1.05); border-color: var(--accent); }
+
+        /* CONTEXT MENU */
+        .context-menu {
+            position: fixed; display: none; flex-direction: column;
+            background: var(--card-bg); border: 1px solid #334155;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.6); border-radius: 6px;
+            padding: 5px 0; z-index: 10000; min-width: 160px;
+            animation: fadeIn 0.1s ease;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+
+        .ctx-item {
+            padding: 10px 15px; font-size: 13px; color: #e2e8f0; cursor: pointer;
+            display: flex; align-items: center; gap: 10px; transition: background 0.1s;
+        }
+        .ctx-item:hover { background: #1e293b; color: white; }
+        .ctx-item.danger { color: var(--danger); }
+        .ctx-item.danger:hover { background: #331010; }
+        .ctx-header {
+            padding: 8px 15px; font-size: 11px; color: var(--text-dim);
+            border-bottom: 1px solid #1e293b; text-transform: uppercase;
+            font-weight: bold; cursor: default;
+        }
+
+        /* SKELETON LOADING */
+        .skeleton {
+            background: #1e293b;
+            background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+            background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 6px;
+        }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        
+        .sk-item { display: flex; padding: 15px; align-items: center; border-bottom: 1px solid #1e293b; }
+        .sk-avatar { width: 40px; height: 40px; border-radius: 50%; margin-right: 12px; flex-shrink: 0; }
+        .sk-lines { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+        .sk-line { height: 10px; width: 100%; }
+        .sk-line.short { width: 60%; }
+
+        .sk-msg { display: flex; flex-direction: column; gap: 10px; padding: 20px; }
+        .sk-msg-row { display: flex; gap: 10px; margin-bottom: 15px; }
+        .sk-msg-row.right { flex-direction: row-reverse; }
+        .sk-msg-bubble { width: 40%; height: 40px; border-radius: 12px; }
+
+        /* LAYOUT */
+        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 999999; pointer-events: none; }
+        .toast { 
+            background: var(--card-bg); color: white; padding: 15px 20px; 
+            border-radius: 12px; margin-bottom: 10px; border-left: 5px solid var(--primary); 
+            animation: slideIn 0.3s ease; box-shadow: 0 5px 15px rgba(0,0,0,0.5); 
+            pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 10px;
+        }
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+        .container { display: flex; width: 100%; height: 100%; position: relative; }
+
+        /* SIDEBAR */
+        .sidebar { 
+            width: 320px; background: var(--sidebar-bg); border-right: 1px solid #1e293b; 
+            display: flex; flex-direction: column; z-index: 50; transition: transform 0.3s ease;
+            flex-shrink: 0;
+        }
+        
+        .sidebar-header { padding: 15px; background: var(--card-bg); display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #1e293b; }
+        .sidebar-header img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--primary); }
+        
+        .search-box { padding: 10px; background: var(--sidebar-bg); border-bottom: 1px solid #1e293b; }
+        .search-box input { width: 100%; background: #0f172a; border: 1px solid #1e293b; padding: 8px; border-radius: 6px; color: white; font-size: 13px; outline: none; }
+
+        .tabs { display: flex; background: var(--sidebar-bg); border-bottom: 1px solid #1e293b; }
+        .tab { flex: 1; padding: 12px; text-align: center; cursor: pointer; font-size: 12px; color: var(--text-dim); position: relative; }
+        .tab.active { color: var(--accent); border-bottom: 2px solid var(--primary); background: #1e3a8a22; font-weight: bold; }
+        .tab-dot { position: absolute; top: 8px; right: 10px; width: 8px; height: 8px; background: var(--danger); border-radius: 50%; display: none; }
+
+        .list-container { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+        .sidebar-footer { padding: 15px; border-top: 1px solid #1e293b; background: var(--sidebar-bg); }
+
+        .item { display: flex; align-items: center; padding: 10px 15px; cursor: pointer; border-bottom: 1px solid #0f172a; position: relative; transition: 0.2s; }
+        .item:hover { background: #0f172a; }
+        .item.active-chat { background: #1e3a8a !important; border-left: 4px solid #60a5fa; }
+        .item img { width: 40px; height: 40px; border-radius: 50%; margin-right: 12px; object-fit: cover; background: #334155; }
+        .item-info { flex: 1; overflow: hidden; }
+        .item-info h4 { margin: 0; font-size: 14px; color: #e2e8f0; }
+        .item-info p { margin: 0; font-size: 11px; color: gray; }
+        
+        .item:hover .pin-btn:not(.pinned),
+        .item:active .pin-btn:not(.pinned) { display: flex !important; }
+        
+        .status-wrapper { position: relative; margin-right: 12px; width: 40px; height: 40px; }
+        .status-wrapper img { margin-right: 0; width: 100%; height: 100%; }
+        .status-dot {
+            width: 12px; height: 12px; border-radius: 50%; 
+            position: absolute; bottom: 0; right: 0;
+            border: 2px solid var(--sidebar-bg);
+            background-color: var(--offline);
+            z-index: 5;
+        }
+        .status-dot.online { background-color: var(--online); box-shadow: 0 0 5px var(--online); }
+        .unread-badge { background: var(--danger); color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: auto; display: none; }
+        .unread-badge.show { display: block; }
+        
+        .req-section-header {
+            padding: 8px 15px; font-size: 11px; text-transform: uppercase; font-weight: bold; 
+            color: var(--text-dim); background: #0f172a; border-bottom: 1px solid #1e293b; border-top: 1px solid #1e293b;
+        }
+
+        /* MAIN CHAT */
+       /* Zoek regel 199 en verander het naar: */
+.main-chat { 
+    flex: 1; 
+    display: flex; 
+    flex-direction: column; 
+    background: radial-gradient(circle at center, #0f172a, #020617); 
+    width: 100%; 
+    min-width: 0; /* VOEG DEZE TOE: Essentieel voor mobiel */
+}
+        .chat-header { padding: 10px 20px; background: var(--card-bg); display: flex; align-items: center; border-bottom: 1px solid #1e293b; height: 65px; gap: 10px; flex-shrink: 0; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+        
+        /* Message & Avatar Layout */
+        .msg-container {
+            display: flex;
+            align-items: flex-end; /* Onderaan uitlijnen */
+            max-width: 80%;
+            margin-bottom: 5px;
+        }
+        .msg-container.sent { align-self: flex-end; flex-direction: row-reverse; }
+        .msg-container.received { align-self: flex-start; }
+
+        .msg-avatar {
+            width: 30px; height: 30px; border-radius: 50%; 
+            object-fit: cover; margin-right: 8px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            flex-shrink: 0;
+            pointer-events: none; /* Niet klikbaar */
+            user-select: none;
+        }
+
+/* Zoek regel 219 en zorg dat het er zo uitziet: */
+.msg { 
+    padding: 10px 14px; border-radius: 12px; font-size: 14px; 
+    position: relative; 
+    /* Deze drie regels zorgen dat tekst afbreekt: */
+    word-wrap: break-word; 
+    word-break: break-word; 
+    overflow-wrap: break-word;
+    
+    white-space: pre-wrap; display: flex; flex-direction: column; user-select: text;
+    min-width: 80px;
+    max-width: 100%; /* VOEG DEZE TOE: Zorgt dat de bubbel nooit breder is dan de container */
+}
+        .msg.sent { background: var(--sent); border-bottom-right-radius: 2px; }
+        .msg.received { background: var(--received); border-bottom-left-radius: 2px; }
+        .msg.system { align-self: center; background: #1e293b88; padding: 5px 12px; border-radius: 20px; font-size: 11px; color: #94a3b8; text-align: center; border: 1px solid #334155; margin: 5px 0; max-width: 90%; }
+        
+        .quoted-msg {
+            border-left: 3px solid var(--accent); background: rgba(0,0,0,0.2);
+            padding: 5px 8px; border-radius: 4px; margin-bottom: 5px; font-size: 11px;
+            cursor: pointer; display: flex; flex-direction: column;
+        }
+        .quoted-user { font-weight: bold; color: var(--accent); margin-bottom: 2px; }
+        .quoted-text { color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .msg img.msg-img-content { max-width: 350px; max-height: 350px; width: 100%; border-radius: 8px; margin-top: 5px; cursor: pointer; object-fit: contain; }
+        .msg .sender { font-size: 10px; color: var(--accent); font-weight: bold; margin-bottom: 2px; display: block; }
+        
+        .msg-footer { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 4px; }
+        .msg-time { font-size: 9px; color: #64748b; }
+        .msg-edited { font-size: 9px; color: #94a3b8; margin-right: 5px; font-style: italic; }
+
+        .date-divider { display: flex; align-items: center; justify-content: center; margin: 15px 0; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+        .date-divider span { background: #1e293b; padding: 4px 12px; border-radius: 12px; border: 1px solid #334155; }
+
+        .opts-btn { 
+            position: absolute; top: -8px; right: -8px; 
+            background: var(--card-bg); border: 1px solid var(--primary); 
+            color: var(--primary); border-radius: 50%; width: 22px; height: 22px; 
+            display: none; align-items: center; justify-content: center; 
+            font-size: 10px; cursor: pointer; z-index: 10;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-weight: bold; line-height: 0; padding-bottom: 2px;
+        }
+        .msg:hover .opts-btn { display: flex; }
+
+        /* INPUT AREA */
+        .chat-input { padding: 15px; background: var(--card-bg); display: flex; flex-direction:column; gap:0; border-top: 1px solid #1e293b; flex-shrink: 0; }
+        
+        #replyPreview {
+            display: none; background: #1e293b; padding: 8px 15px; border-left: 4px solid var(--accent);
+            border-radius: 6px 6px 0 0; margin-bottom: 5px; font-size: 12px;
+            justify-content: space-between; align-items: center;
+        }
+
+        .typing-indicator { font-size: 11px; color: var(--accent); height: 16px; margin-bottom: 4px; padding-left: 10px; opacity: 0; transition: 0.3s; }
+        .typing-indicator.active { opacity: 1; }
+
+        .input-row { display: flex; gap: 10px; align-items: flex-end; width: 100%; }
+        .chat-input textarea { 
+            flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #1e293b; 
+            background: var(--bg); color: white; outline: none; 
+            resize: none; font-family: inherit; 
+            height: 44px; min-height: 44px; max-height: 150px;
+            overflow-y: auto; line-height: 1.4;
+        }
+        
+        .btn { background: var(--primary); border: none; padding: 10px 18px; border-radius: 8px; color: white; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; font-size: 13px; }
+        .btn:hover { background: #1d4ed8; }
+        .btn-danger { background: var(--danger); }
+        .btn-sm { padding: 5px 10px; font-size: 11px; }
+        .btn-icon { padding: 10px; width: 44px; height: 44px; background: #334155; }
+        .btn-outline { background: transparent; border: 1px solid #334155; color: #94a3b8; }
+        .btn-outline:hover { border-color: var(--primary); color: white; }
+        .btn-warning { background: var(--pending); color: #020617; }
+        
+        .settings-icon { width: 30px; height: 30px; cursor: pointer; transition: transform 0.2s; margin-left: 5px; }
+        .settings-icon:hover { transform: rotate(45deg); }
+
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+        .modal-box { background: var(--card-bg); padding: 25px; border-radius: 18px; width: 100%; max-width: 400px; border: 1px solid #1e293b; max-height: 90vh; overflow-y: auto; }
+        input[type="text"] { width: 100%; padding: 10px; margin: 8px 0; border-radius: 8px; border: 1px solid #1e293b; background: #020617; color: white; }
+        
+        .member-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1e293b; font-size: 13px; }
+        .full-btn { width: 100%; margin-top: 5px; }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #020617; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #476952; }
+
+        #loadingOld { text-align: center; font-size: 11px; color: gray; padding: 5px; display: none; }
+        .error-text { color: var(--danger); font-size: 12px; display: none; margin-bottom: 5px; }
+
+        /* --- MOBILE RESPONSIVE CSS --- */
+        .menu-btn {
+            display: none; background: none; border: none; 
+            color: white; font-size: 24px; cursor: pointer; padding: 0;
+            line-height: 1; margin-right: 5px;
+        }
+
+        .sidebar-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.6); 
+            z-index: 40; display: none; backdrop-filter: blur(2px);
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed; top: 0; left: 0; bottom: 0;
+                transform: translateX(-100%);
+                width: 280px; box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+            }
+            .sidebar.active { transform: translateX(0); }
+            
+            .menu-btn { display: block; }
+            .sidebar-overlay.active { display: block; }
+            
+            .chat-header { padding: 10px 15px; }
+            .chat-messages { padding: 15px; }
+            .msg-container { max-width: 90%; }
+            
+            .modal-box { padding: 20px; }
+        }
+        
+        .emoji-tabs { display: flex; }
+        .emoji-tab {
+            flex: 1; padding: 12px; text-align: center; cursor: pointer;
+            font-size: 20px; opacity: 0.6; transition: 0.2s;
+        }
+        .emoji-tab.active { opacity: 1; background: #334155; }
+        
+        .emoji-dropdown {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            width: 350px;
+            max-width: 90vw;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.5);
+            margin-bottom: 10px;
+            z-index: 1000;
+            overflow: hidden;
+        }
+        
+        @media (max-width: 768px) {
+            .emoji-dropdown { width: 300px; left: -120px; }
+        }
+        
+        .emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; padding: 10px; }
+        .emoji-item { font-size: 24px; cursor: pointer; text-align: center; padding: 5px; border-radius: 5px; transition: 0.1s; }
+        .emoji-item:hover { background: #334155; transform: scale(1.2); }
+        
+        .emoji-categories { display: flex; gap: 5px; padding: 8px; background: #1e293b; overflow-x: auto; border-bottom: 1px solid #334155; }
+        .emoji-cat-btn { padding: 8px 12px; font-size: 16px; cursor: pointer; border-radius: 5px; white-space: nowrap; }
+        .emoji-cat-btn.active { background: #334155; }
+        
+        .gif-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 10px; }
+        .gif-item { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform 0.1s; }
+        .gif-item:hover { transform: scale(1.05); border: 2px solid var(--accent); }
+        
+        .emoji-search { width: 100%; padding: 8px; margin: 8px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; font-size: 13px; }
+    </style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<div id="sidebarOverlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+<div id="contextMenu" class="context-menu">
+    <div class="ctx-header">Opties</div>
+    <div id="ctxContent"></div>
+</div>
+
+<div id="imageModal" class="modal" style="z-index: 5000;" onclick="if(event.target===this) document.getElementById('imageModal').style.display='none'">
+    <div style="position:relative; max-width:90%; max-height:90vh; text-align:center;">
+        <img id="imgViewer" style="max-width:100%; max-height:80vh; border-radius:8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); object-fit: contain;">
+        <div style="margin-top:15px; display:flex; gap:10px; justify-content:center;">
+            <a id="imgDownload" href="#" download="afbeelding.jpg" class="btn">Downloaden</a>
+            <button class="btn btn-danger" onclick="document.getElementById('imageModal').style.display='none'">Sluiten</button>
+        </div>
+    </div>
+</div>
+
+<div id="mediaGalleryModal" class="modal" style="z-index: 4000;">
+    <div class="modal-box" style="width: 600px; max-width: 95%;">
+        <h3>Gedeelde Media</h3>
+        <div id="mediaGrid" class="media-grid" style="max-height: 60vh; overflow-y: auto;"></div>
+        <button class="btn full-btn" style="background:#334155" onclick="closeModal('mediaGalleryModal')">Sluiten</button>
+    </div>
+</div>
+
+<div id="reportModal" class="modal" style="z-index: 6000;">
+    <div class="modal-box" style="width:100%; max-width:600px; padding:0; background: #0f172a; overflow:hidden;">
+        <div style="padding:10px; display:flex; justify-content:space-between; align-items:center; background:#1e293b;">
+            <span style="font-weight:bold; margin-left:10px;">Bericht Rapporteren</span>
+            <button class="btn btn-sm btn-danger" onclick="closeModal('reportModal')">Sluiten</button>
+        </div>
+        <div style="width:100%; height:600px; overflow-y:auto;">
+            <iframe data-tally-src="https://tally.so/embed/7R2rP2?alignLeft=1&hideTitle=1&transparentBackground=1&dynamicHeight=1" loading="lazy" width="100%" height="607" frameborder="0" marginheight="0" marginwidth="0" title="Bericht rapporteren"></iframe>
+        </div>
+    </div>
+</div>
+
+<div id="setupOverlay" style="position:fixed; inset:0; background:var(--bg); z-index:9999; display:none; flex-direction:column; align-items:center; justify-content:center;">
+    <div class="modal-box" style="text-align:center;">
+        <h2>Welkom!</h2>
+        <img id="setupPreview" src="https://ui-avatars.com/api/?name=User" style="width:100px; height:100px; border-radius:50%; margin:15px auto; display:block; object-fit:cover;">
+        <button class="btn btn-sm" onclick="document.getElementById('setupFile').click()" style="margin:0 auto;">Upload Foto</button>
+        <input type="file" id="setupFile" hidden accept="image/*" onchange="previewImage(this, 'setupPreview')">
+        <input type="text" id="setupName" placeholder="Je naam...">
+        <div id="setupError" class="error-text">Naam bevat niet toegestane woorden.</div>
+        <button class="btn" onclick="completeSetup()" style="width:100%; margin-top:15px;">Start ➤</button>
+    </div>
+</div>
+
+<div class="container">
+    <div id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <img id="myAvatar" src="" onclick="openProfile()">
+            <div style="flex:1; margin-left:10px;"><b id="myName">...</b></div>
+            <button class="btn btn-sm" onclick="openGroupModal()">+ Groep</button>
+        </div>
+        <div class="search-box">
+            <input type="text" id="searchBar" placeholder="🔍 Zoeken..." onkeyup="renderSidebar()">
+        </div>
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('chats', this)">Chats</div>
+            <div class="tab" onclick="switchTab('discover', this)">Ontdek</div>
+            <div class="tab" onclick="switchTab('requests', this)">Verzoeken <div class="tab-dot" id="reqDot"></div></div>
+        </div>
+        <div id="sidebarList" class="list-container"></div>
+        
+        <div class="sidebar-footer">
+            <button class="btn btn-outline" onclick="window.location.href='index.html'" style="width:100%;">
+                ⬅ Terug naar Home
+            </button>
+        </div>
+    </div>
+
+    <div class="main-chat">
+        <div class="chat-header">
+            <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+            <img id="activeChatImg" src="" style="width:40px; height:40px; border-radius:50%; margin-right:12px; display:none; object-fit:cover;">
+            <div style="flex:1; overflow:hidden;">
+                <h3 id="activeChatName" style="margin:0; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Game Paradise</h3>
+                <span id="activeStatus" style="font-size:11px; color:gray; display:none;">Online</span>
+            </div>
+            
+            <img id="settingsBtn" src="https://flaticons.net/icon.php?slug_category=mobile-application&slug_icon=settings-01&icon_size=256&icon_color=FFFFFF&icon_flip=&icon_rotate=100" class="settings-icon" style="display:none;" onclick="openChatSettings()">
+        </div>
+        
+        <div class="chat-messages" id="chatMessages">
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; opacity:0.8;">
+                <img src="https://game-paradise.github.io/icon/favicon.png" style="width:100px; height:100px; margin-bottom:15px; border-radius:15px; box-shadow:0 0 20px rgba(37, 99, 235, 0.3);">
+                <h2 style="color:white; margin:0 0 10px 0;">Game Paradise chat</h2>
+                <p style="color:#94a3b8; margin:0; max-width:80%;">Welkom bij Game Paradise chat hier kan je gratis unblocked chatten!</p>
+            </div>
+        </div>
+        <div id="loadingOld">Berichten laden...</div>
+
+        <div class="chat-input" id="inputArea" style="display:none">
+            <div id="replyPreview">
+                <div>
+                    <span id="replyLabel" style="color:var(--accent); font-weight:bold; font-size:11px; display:block;">Antwoorden op...</span>
+                    <span id="replyText" style="color:#ccc; font-style:italic;">Tekst...</span>
+                </div>
+                <button class="btn btn-sm btn-danger" onclick="cancelReplyOrEdit()" style="padding:2px 8px; height:auto;">✕</button>
+            </div>
+
+            <div id="typingIndicator" class="typing-indicator">Iemand is aan het typen...</div>
+            <div class="input-row">
+                <button class="btn btn-icon" onclick="document.getElementById('imgInp').click()" style="display: flex; align-items: center; justify-content: center;">
+                    <img src="https://i.imgur.com/CeRZ8na.png" style="width: 24px; height: 24px; object-fit: contain;">
+                </button>
+                <div style="position: relative;">
+                    <button class="btn btn-icon" onclick="toggleEmojiMenu()" style="display: flex; align-items: center; justify-content: center; font-size: 20px;">
+                        😊
+                    </button>
+                    <div id="emojiDropdown" class="emoji-dropdown" style="display: none;">
+                        <div style="padding: 8px; display: flex; background: #1e293b; border-bottom: 1px solid #334155;">
+                            <div class="emoji-tab active" onclick="switchEmojiTab('emoji')" style="flex:1;padding:8px;text-align:center;cursor:pointer;font-size:18px;">😀</div>
+                            <div class="emoji-tab" onclick="switchEmojiTab('gif')" style="flex:1;padding:8px;text-align:center;cursor:pointer;font-size:18px;">🎞</div>
+                            <div class="emoji-tab" onclick="switchEmojiTab('sticker')" style="flex:1;padding:8px;text-align:center;cursor:pointer;font-size:18px;">🎨</div>
+                        </div>
+                        <div id="emojiDropdownContent" style="height: 280px; overflow-y: auto; background: #0f172a;">
+                        </div>
+                    </div>
+                </div>
+                <input type="file" id="imgInp" hidden accept="image/*" onchange="handleImageSend(this)">
+                
+                <textarea id="messageInput" placeholder="Typ bericht... (Shift+Enter voor nieuwe regel)" 
+                          oninput="handleTyping()"
+                          onkeydown="handleKeyDown(event)"></textarea>
+                
+                <button id="sendBtn" class="btn" onclick="sendMessage()">➤</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="confirmModal" class="modal" style="z-index: 3000;">
+    <div class="modal-box" style="text-align:center;">
+        <h3 id="confirmTitle">Bevestigen</h3>
+        <p id="confirmText" style="color:gray; font-size:14px;"></p>
+        <div style="display:flex; gap:10px; justify-content:center; margin-top:20px;">
+            <button class="btn btn-danger" id="confirmYesBtn">Ja, doe het</button>
+            <button class="btn" style="background:#334155" onclick="closeModal('confirmModal')">Annuleren</button>
+        </div>
+    </div>
+</div>
+
+<div id="profileModal" class="modal"><div class="modal-box">
+    <h3>Profiel</h3>
+    <div style="text-align:center"><img id="editPreview" src="" style="width:100px; height:100px; border-radius:50%; object-fit:cover;"></div>
+    <button class="btn btn-sm" onclick="document.getElementById('editFile').click()" style="margin:10px auto; display:block;">Wijzig Foto</button>
+    <input type="file" id="editFile" hidden accept="image/*" onchange="previewImage(this, 'editPreview')">
+    <input type="text" id="editName">
+    <div id="profileError" class="error-text">Naam bevat niet toegestane woorden.</div>
+    <button class="btn" onclick="saveProfile()" style="width:100%">Opslaan</button>
+    <button class="btn" onclick="closeModal('profileModal')" style="width:100%; background:#334155; margin-top:5px;">Sluiten</button>
+</div></div>
+
+<div id="groupModal" class="modal"><div class="modal-box">
+    <h3>Nieuwe Groep</h3>
+    <div style="text-align:center; margin-bottom:10px;">
+        <img id="groupCreatePreview" src="https://ui-avatars.com/api/?name=Group" style="width:80px; height:80px; border-radius:50%; object-fit:cover;">
+        <br>
+        <button class="btn btn-sm" onclick="document.getElementById('groupCreateFile').click()" style="margin-top:5px;">Kies Groepsfoto</button>
+        <input type="file" id="groupCreateFile" hidden accept="image/*" onchange="previewImage(this, 'groupCreatePreview')">
+    </div>
+    <input type="text" id="groupName" placeholder="Groepsnaam">
+    <div id="inviteList" style="max-height:150px; overflow-y:auto; margin:10px 0; border:1px solid #1e293b; padding:10px; border-radius:8px;"></div>
+    <button class="btn" onclick="createGroup()" style="width:100%">Aanmaken</button>
+    <button class="btn" onclick="closeModal('groupModal')" style="width:100%; background:#334155; margin-top:5px;">Annuleren</button>
+</div></div>
+
+<div id="addMemberModal" class="modal" style="z-index: 2000;"><div class="modal-box">
+    <h3>Lid Toevoegen</h3>
+    <div id="addMemberList" style="max-height:200px; overflow-y:auto; margin-bottom:15px; border:1px solid #1e293b; border-radius:8px; padding:10px;">Laden...</div>
+    <button class="btn" onclick="closeModal('addMemberModal')" style="width:100%; background:#334155;">Sluiten</button>
+</div></div>
+
+<div id="settingsModal" class="modal"><div class="modal-box" id="settingsContent"></div></div>
+
+<script>
+// CONFIG
+const firebaseConfig = {
+    apiKey: "AIzaSyA0K4geAuueVfiItB_98-LkqRTnpYNUNvM",
+    authDomain: "gameparadise-80490.firebaseapp.com",
+    projectId: "gameparadise-80490",
+    storageBucket: "gameparadise-80490.firebasestorage.app",
+    messagingSenderId: "335620903527",
+    appId: "1:335620903527:web:1bc1e01a386bf6e4e7fac2"
+};
+
+// INITIALIZE FIREBASE SAFELY
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+// Verwijder het persistence blok dat hier stond!
+
+window.onerror = function(msg, url, line) {
+    if(msg.includes("Firebase") || msg.includes("quota")) notify("Systeem Fout", msg, null, null, "error");
+};
+
+// ADMIN CONFIG
+const ADMIN_EMAILS = ["someoeneheilig@gmail.com", "melle1337k@gmail.com"];
+
+let badWords = ["kanker", "hoer", "slet", "tyfus", "tering", "kut", "neuk", "lul", "pik", "verdomme", "godver", "nigger", "neger", "hitler", "nazi", "kkr", "mongool", "autist", "bitch", "fuck", "asshole", "klootzak"];
+let firebaseBannedWords = [];
+
+async function loadBannedWords() {
+    try {
+        const doc = await db.collection("admin").doc("settings").get();
+        if (doc.exists && doc.data().bannedWords) {
+            firebaseBannedWords = doc.data().bannedWords;
+        }
+    } catch (e) {
+        console.log("Kon gebanned words niet laden:", e);
+    }
+}
+
+function checkProfanity(text) { 
+    if(!text) return false; 
+    const allBadWords = [...badWords, ...firebaseBannedWords];
+    return allBadWords.some(word => text.toLowerCase().includes(word)); 
+}
+
+// STATE
+let user = null;
+let activeChatId = null;
+let chatType = null;
+let currentBase64 = null; 
+let chatDataMap = new Map();
+let activeListeners = new Set();
+let msgUnsub = null;
+let typingUnsub = null;
+let originalTitle = document.title;
+let titleInterval = null;
+let ignoreInitialGroups = true;
+let typingTimeout = null;
+let lastTypingUpdate = 0;
+let msgLimit = 50; 
+let observedUsers = new Set(); 
+let userCache = new Map(); // Cache voor avatar URL's
+let hasLoadedChats = false;
+let sentRequestIds = new Set(); 
+let pinnedChats = []; 
+let readStatus = new Map(); // Unread status from Firestore
+let readStatusLoaded = false;
+
+// Reply & Edit State
+let replyContext = null; 
+let editMessageId = null; 
+
+    function showDesktopNotification(sender, text, chatId) {
+    // Only show notification if tab is not visible OR if user is in a different chat
+    if (document.visibilityState !== 'visible' || activeChatId !== chatId) {
+        if ("Notification" in window && Notification.permission === "granted") {
+            const options = {
+                body: text.length > 100 ? text.substring(0, 100) + '...' : text,
+                icon: 'icon/favicon.png',
+                badge: 'icon/favicon.png',
+                tag: chatId,
+                requireInteraction: false
+            };
+            const n = new Notification(`Nieuw bericht van ${sender}`, options);
+            n.onclick = function() {
+                window.focus();
+                if (activeChatId !== chatId) {
+                    openChat(chatId);
+                }
+                n.close();
+            };
+            // Auto-close after 5 seconds
+            setTimeout(() => n.close(), 5000);
+        }
+    }
+}
+
+// --- MOBIELE MENU FUNCTIE ---
+function toggleSidebar(forceOpen = null) {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    
+    if (forceOpen === false) {
+        sidebar.classList.remove('active');
+        overlay.classList.remove('active');
+    } else {
+        sidebar.classList.toggle('active');
+        overlay.classList.toggle('active');
+    }
+}
+
+// INIT
+showSidebarSkeletons(); 
+document.addEventListener('click', (e) => {
+    if(!e.target.closest('.context-menu')) hideContextMenu();
+});
+document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape') hideContextMenu();
+});
+
+auth.onAuthStateChanged(u => {
+    if (u) { 
+        user = u; 
+        // We roepen checkSetup aan, die op zijn beurt weer initApp() start
+        checkSetup(); 
+        startPresenceSystem(); 
+    } else { 
+        location.href = 'index.html'; 
+    }
+});
+
+function isAdmin() {
+    return user && ADMIN_EMAILS.includes(user.email);
+}
+
+function startPresenceSystem() {
+    if(!user) return;
+    
+    // Direct online gaan
+    updatePresence('online');
+
+    // Vraag toestemming voor notificaties bij opstarten
+    if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+    }
+
+    // Update elke minuut om de verbinding levend te houden
+    setInterval(() => {
+        if(user) updatePresence('online');
+    }, 60000);
+
+    // Alleen offline gaan bij het echt sluiten van de tab/browser
+    window.addEventListener('beforeunload', () => {
+        updatePresence('offline');
+    });
+    
+    window.addEventListener('pagehide', () => {
+        updatePresence('offline');
+    });
+
+    // We verwijderen de 'visibilitychange' listener die je offline zette bij minimaliseren
+}
+
+// Hulpscript om de status snel en veilig naar de database te schrijven
+function updatePresence(status) {
+    if(user) {
+        db.collection("users").doc(user.uid).update({ 
+            status: status, 
+            lastSeen: firebase.firestore.FieldValue.serverTimestamp() 
+        }).catch(err => {
+            console.warn("Kon status niet opslaan:", err);
+        });
+    }
+}
+function updatePresence(status) { 
+    if(user) db.collection("users").doc(user.uid).update({ 
+        status: status, 
+        lastSeen: firebase.firestore.FieldValue.serverTimestamp() 
+    }); 
+}
+
+async function checkSetup() {
+    try {
+        const doc = await db.collection("users").doc(user.uid).get();
+        if (!doc.exists || !doc.data().name) { 
+            document.getElementById('setupOverlay').style.display = 'flex'; 
+        } else {
+            document.getElementById('setupOverlay').style.display = 'none';
+            
+            // Veilig voor iPad Safari
+            if ("Notification" in window && Notification.permission === "default") {
+                Notification.requestPermission();
+            }
+            
+            // LAAD VERBODEN WOORDEN EN START DE APP
+            await loadBannedWords(); 
+            if (typeof initApp === "function") {
+                initApp(); 
+            } else {
+                console.error("Fout: De functie initApp() is niet gevonden in de rest van de code.");
+            }
+        }
+    } catch (error) {
+        console.error("Fout in checkSetup:", error);
+    }
+} // <--- Deze accolade sloot je script af!
+
+function initApp() {
+    db.collection("users").doc(user.uid).onSnapshot(d => {
+        const data = d.data();
+        document.getElementById('myName').innerText = data.name;
+        document.getElementById('myAvatar').src = data.pic || `https://ui-avatars.com/api/?name=${data.name}`;
+        if (!data.joinedAt) { db.collection("users").doc(user.uid).update({ joinedAt: firebase.firestore.FieldValue.serverTimestamp() }); }
+    });
+    
+    db.collection("users").doc(user.uid).collection("requests").onSnapshot(snap => {
+        document.getElementById('reqDot').style.display = snap.empty ? 'none' : 'block';
+        if(!snap.empty) {
+            snap.docChanges().forEach(change => { if(change.type === 'added') notify("Vriendschapsverzoek", "Je hebt een nieuw verzoek!", "", "requests"); });
+        }
+    });
+
+    db.collection("users").doc(user.uid).collection("sentRequests").onSnapshot(snap => {
+        sentRequestIds.clear();
+        snap.forEach(doc => sentRequestIds.add(doc.id));
+        const activeTab = document.querySelector('.tab.active').innerText.split(' ')[0];
+        if (activeTab === 'Ontdek' || activeTab === 'Verzoeken') renderSidebar();
+    });
+
+    subscribeToChats();
+    loadPinnedChats();
+    loadReadStatus();
+    loadBannedWords();
+    setTimeout(() => { ignoreInitialGroups = false; }, 2000);
+}
+
+function loadPinnedChats() {
+    db.collection("users").doc(user.uid).get().then(doc => {
+        if(doc.exists && doc.data().pinnedChats) {
+            pinnedChats = doc.data().pinnedChats;
+            renderSidebar();
+        }
+        // Voeg dit toe onderaan initApp()
+    setInterval(() => {
+        let changed = false;
+        const now = Date.now();
+        
+        chatDataMap.forEach((c, id) => {
+            if (c.type === 'private' && c.online) {
+                // Als ze langer dan 2 minuten (120000 ms) niet gezien zijn
+                if ((now - c.lastSeen) >= 120000) {
+                    c.online = false;
+                    chatDataMap.set(id, c);
+                    changed = true;
+                    
+                    // Update ook de header als deze chat momenteel open staat
+                    if(activeChatId === id) {
+                        const statusEl = document.getElementById('activeStatus');
+                        statusEl.innerText = 'Offline';
+                        statusEl.style.color = 'gray';
+                    }
+                }
+            }
+        });
+        
+        // Render de zijbalk opnieuw als er iemand offline is gegaan
+        if (changed) renderSidebar();
+    }, 30000); // Checkt elke 30 seconden
+    });
+}
+
+function loadReadStatus() {
+    db.collection("users").doc(user.uid).collection("readStatus").get().then(snap => {
+        readStatus.clear();
+        snap.forEach(doc => {
+            readStatus.set(doc.id, doc.data().lastRead || 0);
+        });
+        readStatusLoaded = true;
+        if(hasLoadedChats) applyReadStatus();
+    }).catch(err => {
+        console.error("Error loading read status:", err);
+        readStatusLoaded = true;
+    });
+}
+
+function applyReadStatus() {
+    if(!chatDataMap || chatDataMap.size === 0) return;
+    chatDataMap.forEach((c, id) => {
+        const lastRead = readStatus.get(id) || 0;
+        const msgTime = c.timestamp || 0;
+        if(msgTime > 0 && msgTime > lastRead) {
+            c.unread = true;
+        } else {
+            c.unread = false;
+        }
+        chatDataMap.set(id, c);
+    });
+    renderSidebar();
+}
+
+function togglePinChat(chatId) {
+    const idx = pinnedChats.indexOf(chatId);
+    if(idx > -1) {
+        pinnedChats.splice(idx, 1);
+    } else {
+        if(pinnedChats.length >= 3) {
+            notify("Maximaal 3 chats vastgezet", "Maak eerst een andere chat los.", null, null, "error");
+            return;
+        }
+        pinnedChats.push(chatId);
+    }
+    db.collection("users").doc(user.uid).update({ pinnedChats: pinnedChats });
+    renderSidebar();
+}
+
+function showSidebarSkeletons() {
+    const list = document.getElementById('sidebarList');
+    list.innerHTML = "";
+    for(let i=0; i<15; i++) {
+        list.innerHTML += `
+        <div class="sk-item">
+            <div class="skeleton sk-avatar"></div>
+            <div class="sk-lines">
+                <div class="skeleton sk-line" style="width: 40%"></div>
+                <div class="skeleton sk-line short"></div>
+            </div>
+        </div>`;
+    }
+}
+
+function showChatSkeletons() {
+    const box = document.getElementById('chatMessages');
+    box.innerHTML = "";
+    for(let i=0; i<8; i++) {
+        const align = i % 2 === 0 ? 'left' : 'right';
+        box.innerHTML += `
+        <div class="sk-msg">
+            <div class="sk-msg-row ${align}">
+                <div class="skeleton sk-msg-bubble"></div>
+            </div>
+        </div>`;
+    }
+}
+
+function listenToUserUpdates(uid) {
+    if (observedUsers.has(uid)) return;
+    observedUsers.add(uid);
+    db.collection("users").doc(uid).onSnapshot(doc => {
+        if (doc.exists) {
+            const data = doc.data();
+            const newName = data.name;
+            const newPic = data.pic || `https://ui-avatars.com/api/?name=${newName}`;
+            
+            userCache.set(uid, newPic); // Update cache
+            
+            document.querySelectorAll(`.user-name-${uid}`).forEach(el => el.innerText = newName);
+            document.querySelectorAll(`.user-avatar-${uid}`).forEach(el => el.src = newPic);
+            
+            if(chatDataMap.has(uid)) {
+                const c = chatDataMap.get(uid);
+                if (c.name !== newName) {
+                    c.name = newName; c.pic = data.pic || c.pic;
+                    chatDataMap.set(uid, c); renderSidebar();
+                    if(activeChatId === uid) document.getElementById('activeChatName').innerText = newName;
+                }
+            }
+        }
+    });
+}
+
+async function subscribeToChats() {
+    setupListener('global', 'Algemeen', 'https://i.imgur.com/C9HtyPv.jpeg', 'global', db.collection("chats"));
+
+    db.collection("groups").where("members", "array-contains", user.uid).onSnapshot(snap => {
+        snap.docChanges().forEach(change => {
+            if (change.type === "added") {
+                const d = change.doc.data();
+                setupListener(change.doc.id, d.name, d.pic, 'group', db.collection("groups").doc(change.doc.id).collection("messages"));
+                if(!ignoreInitialGroups) notify("Nieuwe Groep", `Toegevoegd aan ${d.name}`, d.pic, change.doc.id, 'group');
+            } else if (change.type === "removed") {
+                chatDataMap.delete(change.doc.id);
+                if(activeChatId === change.doc.id) {
+                    document.getElementById('chatMessages').innerHTML = "<div style='text-align:center; margin-top:50px'>Groep verwijderd of verlaten</div>";
+                    document.getElementById('inputArea').style.display = 'none';
+                    activeChatId = null;
+                }
+                renderSidebar();
+            }
+        });
+    });
+
+    const fSnap = await db.collection("users").doc(user.uid).collection("friends").get();
+    fSnap.forEach(doc => {
+        const chatId = [user.uid, doc.id].sort().join("_");
+        setupListener(doc.id, doc.data().name, doc.data().pic, 'private', db.collection("private_chats").doc(chatId).collection("messages"));
+        
+        db.collection("users").doc(doc.id).onSnapshot(s => {
+            if (!s.exists) return; // Voorkom crashes als een doc niet bestaat
+            const data = s.data();
+            const now = Date.now();
+            const lastSeen = data.lastSeen ? data.lastSeen.toMillis() : 0;
+            const isOnline = (data.status === 'online') && ((now - lastSeen) < 120000);
+            
+            if(chatDataMap.has(doc.id)) {
+                const c = chatDataMap.get(doc.id);
+                c.name = data.name;
+                c.online = isOnline;
+                c.lastSeen = lastSeen; // NIEUW: Bewaar de exacte tijd lokaal!
+                c.pic = data.pic || c.pic;
+                chatDataMap.set(doc.id, c);
+                
+                renderSidebar();
+                
+                if(activeChatId === doc.id) {
+                    document.getElementById('activeStatus').style.display = 'block';
+                    document.getElementById('activeStatus').innerText = isOnline ? 'Online' : 'Offline';
+                    document.getElementById('activeStatus').style.color = isOnline ? 'var(--online)' : 'gray';
+                }
+            }
+        });
+    });
+
+    setTimeout(() => {
+        if(chatDataMap.size === 0) {
+            document.getElementById('sidebarList').innerHTML = "<div style='padding:20px; text-align:center; color:gray'>Geen chats gevonden.</div>";
+        }
+    }, 2500);
+}
+
+function setupListener(id, name, pic, type, ref) {
+    if(activeListeners.has(id)) return;
+    activeListeners.add(id);
+    if(!chatDataMap.has(id)) chatDataMap.set(id, { id, name, pic, type, timestamp: 0, unread: false, online: false });
+
+    if(type === 'group') {
+        db.collection("groups").doc(id).onSnapshot(snap => {
+            if(snap.exists) {
+                const d = snap.data();
+                const c = chatDataMap.get(id);
+                c.name = d.name; c.pic = d.pic;
+                chatDataMap.set(id, c);
+                if(activeChatId === id) {
+                    document.getElementById('activeChatName').innerText = d.name;
+                    document.getElementById('activeChatImg').src = d.pic || `https://ui-avatars.com/api/?name=${d.name}`;
+                }
+                renderSidebar();
+            }
+        });
+    }
+
+    ref.orderBy("timestamp", "desc").limit(1).onSnapshot(snap => {
+        if(snap.empty) { renderSidebar(); return; }
+        const m = snap.docs[0].data();
+        const time = m.timestamp ? m.timestamp.toMillis() : Date.now();
+        const cData = chatDataMap.get(id);
+        const lastRead = readStatus.get(id) || 0;
+        
+        cData.timestamp = time;
+        
+        // Only mark as unread if chat is NOT active OR page is hidden
+        if (activeChatId === id && !document.hasFocus()) {
+            // Chat is open and visible - mark as read
+            if (time > lastRead) {
+                readStatus.set(id, time);
+                db.collection("users").doc(user.uid).collection("readStatus").doc(id).set({
+                    lastRead: time
+                });
+            }
+            cData.unread = false;
+        } else if (m.uid !== user.uid && time > lastRead) {
+            // Chat is not open - mark as unread if from someone else
+            cData.unread = true;
+            if(type !== 'global' && !ignoreInitialGroups) {
+                notify(name, m.type==='system'?m.text:(m.text || "Foto"), pic, id, type);
+                flashTitle("Nieuw bericht!");
+                playNotificationSound();
+            }
+            // Browser notification for new messages
+            if (m.uid !== user.uid) {
+                const senderName = m.senderName || name;
+                const msgText = m.type === 'system' ? m.text : (m.text || "Foto");
+                showDesktopNotification(senderName, msgText, id);
+            }
+        }
+        chatDataMap.set(id, cData);
+        hasLoadedChats = true;
+        renderSidebar();
+    });
+}
+
+function flashTitle(msg) {
+    if(titleInterval) clearInterval(titleInterval);
+    let state = false;
+    titleInterval = setInterval(() => {
+        document.title = state ? originalTitle : `🔔 ${msg}`;
+        state = !state;
+    }, 1000);
+    setTimeout(() => { clearInterval(titleInterval); document.title = originalTitle; }, 5000);
+    window.onclick = () => { clearInterval(titleInterval); document.title = originalTitle; };
+}
+function playNotificationSound() { const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3'); audio.volume = 0.5; audio.play().catch(e => {}); }
+
+function renderSidebar() {
+    if(!hasLoadedChats && chatDataMap.size === 0) return;
+
+    // Apply read status to ensure unread badges are correct
+    if(readStatus.size > 0) {
+        chatDataMap.forEach((c, id) => {
+            const lastRead = readStatus.get(id);
+            if(lastRead !== undefined) {
+                const msgTime = c.timestamp || 0;
+                c.unread = (msgTime > 0 && msgTime > lastRead);
+                chatDataMap.set(id, c);
+            }
+        });
+    }
+
+    const list = document.getElementById('sidebarList');
+    const tab = document.querySelector('.tab.active').innerText.split(' ')[0];
+    const term = document.getElementById('searchBar').value.toLowerCase();
+    list.innerHTML = "";
+
+    if (tab === 'Chats') {
+        let chats = Array.from(chatDataMap.values()).sort((a,b) => {
+            if(a.type === 'global') return -1; if(b.type === 'global') return 1;
+            return b.timestamp - a.timestamp;
+        });
+
+        if(chats.length === 0) { list.innerHTML = "<div style='padding:20px; text-align:center; color:gray'>Geen chats.</div>"; return; }
+
+        const pinned = chats.filter(c => pinnedChats.includes(c.id));
+        const unpinned = chats.filter(c => !pinnedChats.includes(c.id));
+
+        if(pinned.length > 0) {
+            const pinnedHeader = document.createElement('div');
+            pinnedHeader.className = 'req-section-header';
+            pinnedHeader.style.color = 'var(--accent)';
+            pinnedHeader.textContent = '📌 Vastgezet';
+            list.appendChild(pinnedHeader);
+            
+            pinned.forEach(c => {
+                if(term && !c.name.toLowerCase().includes(term)) return;
+                const item = document.createElement('div');
+                item.className = `item ${activeChatId === c.id ? 'active-chat' : ''}`;
+                item.onclick = () => openChat(c.id, c.name, c.pic, c.type);
+                
+                let avatarHtml = `<div class="status-wrapper">
+                        <img src="${c.pic || `https://ui-avatars.com/api/?name=${c.name}`}">
+                        ${c.type === 'private' ? `<div class="status-dot ${c.online?'online':''}"></div>` : ''}
+                    </div>`;
+
+                item.innerHTML = `
+                    ${avatarHtml}
+                    <div class="item-info"><h4>${c.name}</h4><p>${c.type==='private'?'Vriend':c.type==='group'?'Groep':'Community'}</p></div>
+                    <div class="unread-badge ${c.unread?'show':''}">${c.unread?'!':''}</div>
+                    <button class="btn btn-sm pin-btn pinned" style="margin-left:5px; padding:5px;" onclick="event.stopPropagation(); togglePinChat('${c.id}')">📌</button>`;
+                list.appendChild(item);
+            });
+            
+            if(unpinned.length > 0) {
+                const unpinnedHeader = document.createElement('div');
+                unpinnedHeader.className = 'req-section-header';
+                unpinnedHeader.textContent = '💬 Overige chats';
+                list.appendChild(unpinnedHeader);
+            }
+        }
+
+        unpinned.forEach(c => {
+            if(term && !c.name.toLowerCase().includes(term)) return;
+            const item = document.createElement('div');
+            item.className = `item ${activeChatId === c.id ? 'active-chat' : ''}`;
+            item.onclick = () => openChat(c.id, c.name, c.pic, c.type);
+            
+            let avatarHtml = `<div class="status-wrapper">
+                    <img src="${c.pic || `https://ui-avatars.com/api/?name=${c.name}`}">
+                    ${c.type === 'private' ? `<div class="status-dot ${c.online?'online':''}"></div>` : ''}
+                </div>`;
+
+            item.innerHTML = `
+                ${avatarHtml}
+                <div class="item-info"><h4>${c.name}</h4><p>${c.type==='private'?'Vriend':c.type==='group'?'Groep':'Community'}</p></div>
+                <div class="unread-badge ${c.unread?'show':''}">${c.unread?'!':''}</div>
+                <button class="btn btn-sm btn-outline pin-btn" style="margin-left:5px; padding:5px; display:none;" onclick="event.stopPropagation(); togglePinChat('${c.id}')">📍</button>`;
+            list.appendChild(item);
+        });
+    } else if (tab === 'Ontdek') { renderDiscover(list, term); } 
+    else if (tab === 'Verzoeken') { renderRequests(list); }
+}
+
+async function renderDiscover(list, term) {
+    const friendsSnap = await db.collection("users").doc(user.uid).collection("friends").get();
+    const myFriends = friendsSnap.docs.map(d => d.id);
+    
+    list.innerHTML = ""; 
+
+    let query = db.collection("users").limit(200);
+
+    query.get().then(snap => {
+        if (snap.empty) {
+            list.innerHTML = "<div style='padding:20px; text-align:center; color:gray'>Niemand gevonden.</div>";
+            return;
+        }
+
+        let users = [];
+        snap.forEach(doc => {
+            const d = doc.data();
+            if(doc.id === user.uid || myFriends.includes(doc.id) || sentRequestIds.has(doc.id)) return;
+            if(term && !d.name.toLowerCase().includes(term.toLowerCase()) && !term.includes(d.name)) return;
+            users.push({ id: doc.id, ...d });
+        });
+
+        users.sort((a, b) => {
+            const tA = a.joinedAt ? a.joinedAt.toMillis() : 0;
+            const tB = b.joinedAt ? b.joinedAt.toMillis() : 0;
+            return tB - tA;
+        });
+
+        if (users.length === 0) {
+            list.innerHTML = "<div style='padding:20px; text-align:center; color:gray'>Geen nieuwe mensen gevonden.</div>";
+            return;
+        }
+
+        users.forEach(u => {
+            const picUrl = u.pic || "";
+            list.innerHTML += `
+                <div class="item">
+                    <img src="${picUrl || `https://ui-avatars.com/api/?name=${u.name}`}">
+                    <div class="item-info"><h4>${u.name}</h4></div>
+                    <button class="btn btn-sm" onclick="sendFriendRequest('${u.id}', '${u.name}', '${picUrl}')">Toevoegen</button>
+                </div>`;
+        });
+    }).catch(err => {
+        console.error("Ontdek fout:", err);
+        list.innerHTML = "<div style='padding:20px;text-align:center;color:orange'>Fout bij laden.</div>";
+    });
+}
+
+function renderRequests(list) {
+    const incomingPromise = db.collection("users").doc(user.uid).collection("requests").get();
+    const outgoingPromise = db.collection("users").doc(user.uid).collection("sentRequests").get();
+
+    Promise.all([incomingPromise, outgoingPromise]).then(([inSnap, outSnap]) => {
+        list.innerHTML = "";
+        
+        if(!inSnap.empty) {
+            list.innerHTML += `<div class="req-section-header">Ontvangen</div>`;
+            inSnap.forEach(doc => {
+                const d = doc.data();
+                list.innerHTML += `
+                    <div class="item">
+                        <img src="${d.pic || 'https://ui-avatars.com/api/?name=Req'}">
+                        <div class="item-info"><h4>${d.name}</h4></div>
+                        <div style="display:flex; gap:5px;">
+                            <button class="btn btn-sm" onclick="acceptFriend('${doc.id}', '${d.name}', '${d.pic}')">Accepteer</button>
+                            <button class="btn btn-sm btn-danger" onclick="declineRequest('${doc.id}')">Afwijzen</button>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        if(!outSnap.empty) {
+            list.innerHTML += `<div class="req-section-header" style="color:var(--pending)">Verzonden 🕒</div>`;
+            outSnap.forEach(doc => {
+                const d = doc.data();
+                list.innerHTML += `
+                    <div class="item">
+                        <img src="${d.pic || `https://ui-avatars.com/api/?name=${d.name}`}">
+                        <div class="item-info"><h4>${d.name}</h4><p style="color:var(--pending); font-size:10px;">In afwachting...</p></div>
+                        <button class="btn btn-sm btn-danger" onclick="cancelSentRequest('${doc.id}')">Annuleren</button>
+                    </div>`;
+            });
+        }
+
+        if(inSnap.empty && outSnap.empty) list.innerHTML = "<div style='padding:20px; text-align:center; color:gray'>Geen verzoeken</div>";
+    });
+}
+
+function linkify(text) {
+    if(!text) return "";
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.replace(urlRegex, function(url) { return '<a href="' + url + '" target="_blank">' + url + '</a>'; });
+}
+function getFormattedDate(date) {
+    const today = new Date(); const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === today.toDateString()) return "VANDAAG";
+    if (date.toDateString() === yesterday.toDateString()) return "GISTEREN";
+    return date.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' });
+}
+
+// FUNCTION: Markeer als gelezen
+function markAsRead() {
+    if(activeChatId && chatDataMap.has(activeChatId)) {
+        const c = chatDataMap.get(activeChatId);
+        const timestamp = c.timestamp || Date.now();
+        
+        readStatus.set(activeChatId, timestamp);
+        db.collection("users").doc(user.uid).collection("readStatus").doc(activeChatId).set({
+            lastRead: timestamp
+        });
+        
+        c.unread = false;
+        chatDataMap.set(activeChatId, c);
+        renderSidebar();
+    }
+}
+
+// HULP FUNCTIE OM ALTIJD DEZELFDE ID TE KRIJGEN VOOR TYPING DOCS
+function getTypingDocId() {
+    if (chatType === 'global') return "typing_global";
+    if (chatType === 'group') return "typing_group_" + activeChatId;
+    return "typing_private_" + [user.uid, activeChatId].sort().join("_");
+}
+
+async function openChat(id, name, pic, type) {
+    toggleSidebar(false);
+    activeChatId = id; chatType = type;
+    msgLimit = 50; 
+    
+    // Direct markeren als gelezen
+    markAsRead();
+    
+    cancelReplyOrEdit();
+
+    if(titleInterval) { clearInterval(titleInterval); document.title = originalTitle; }
+
+    document.getElementById('activeChatName').innerText = name;
+    document.getElementById('activeChatImg').src = pic || `https://ui-avatars.com/api/?name=${name}`;
+    document.getElementById('activeChatImg').style.display = "block";
+    document.getElementById('inputArea').style.display = "flex";
+    document.getElementById('settingsBtn').style.display = type === 'global' ? 'none' : 'block';
+    
+    document.getElementById('chatMessages').onscroll = checkScroll;
+    
+    const statusEl = document.getElementById('activeStatus');
+    if(type === 'private' && chatDataMap.has(id)) {
+        const isOnline = chatDataMap.get(id).online;
+        statusEl.style.display = 'block';
+        statusEl.innerText = isOnline ? 'Online' : 'Offline';
+        statusEl.style.color = isOnline ? 'var(--online)' : 'gray';
+    } else { statusEl.style.display = 'none'; }
+
+    renderSidebar();
+    if(msgUnsub) msgUnsub();
+    if(typingUnsub) typingUnsub();
+
+    showChatSkeletons(); 
+    setupChatListeners();
+}
+
+function setupChatListeners() {
+    let ref;
+    // Bepaal de referentie voor BERICHTEN
+    if(chatType === 'global') ref = db.collection("chats");
+    else if(chatType === 'group') ref = db.collection("groups").doc(activeChatId).collection("messages");
+    else ref = db.collection("private_chats").doc([user.uid, activeChatId].sort().join("_")).collection("messages");
+
+    // GEBRUIK DE HULP FUNCTIE VOOR CONSISTENTIE
+    const typingDocId = getTypingDocId();
+
+    // Verbeterde Typing Listener op METADATA
+    typingUnsub = db.collection("metadata").doc(typingDocId).onSnapshot(doc => {
+        if(doc.exists) {
+            const data = doc.data();
+            const typingMap = data.typingStatus || {};
+            
+            const now = Date.now();
+            const activeTypers = [];
+            
+            Object.keys(typingMap).forEach(uid => {
+                if(uid !== user.uid) {
+                    const info = typingMap[uid];
+                    const name = (typeof info === 'object') ? info.name : info;
+                    const time = (typeof info === 'object') ? info.time : now; 
+                    
+                    if (now - time < 5000) { // Update < 5 sec geleden
+                        activeTypers.push(name);
+                    }
+                }
+            });
+
+            const ind = document.getElementById('typingIndicator');
+            if(activeTypers.length > 0) {
+                ind.innerText = activeTypers.join(", ") + (activeTypers.length > 1 ? " zijn aan het typen..." : " is aan het typen...");
+                ind.classList.add('active');
+            } else { 
+                ind.classList.remove('active'); 
+            }
+        }
+    });
+
+    msgUnsub = ref.orderBy("timestamp", "asc").limitToLast(msgLimit).onSnapshot(snap => {
+        window.currentSnap = snap;
+        renderMessagesFromCache();
+    });
+}
+
+function checkScroll() {
+    const box = document.getElementById('chatMessages');
+    if (box.scrollTop === 0 && window.currentSnap && window.currentSnap.size >= msgLimit) { loadMoreMessages(); }
+}
+
+function loadMoreMessages() {
+    const oldLimit = msgLimit;
+    msgLimit += 50; 
+    document.getElementById('loadingOld').style.display = 'block';
+    const box = document.getElementById('chatMessages');
+    const oldHeight = box.scrollHeight;
+    if(msgUnsub) msgUnsub();
+
+    let ref;
+    if(chatType === 'global') ref = db.collection("chats");
+    else if(chatType === 'group') ref = db.collection("groups").doc(activeChatId).collection("messages");
+    else ref = db.collection("private_chats").doc([user.uid, activeChatId].sort().join("_")).collection("messages");
+
+    msgUnsub = ref.orderBy("timestamp", "asc").limitToLast(msgLimit).onSnapshot(snap => {
+        window.currentSnap = snap;
+        renderMessagesFromCache();
+        document.getElementById('loadingOld').style.display = 'none';
+        if (oldLimit !== msgLimit) {
+            const newHeight = box.scrollHeight;
+            box.scrollTop = newHeight - oldHeight;
+        }
+    });
+}
+
+function renderMessagesFromCache() {
+    if(!window.currentSnap) return;
+    const box = document.getElementById('chatMessages');
+    const isAtBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 100;
+    
+    box.innerHTML = "";
+    let lastDateStr = "";
+
+    window.currentSnap.forEach(doc => {
+        const m = doc.data();
+        let content = "";
+        let isMe = m.uid === user.uid;
+        let className = isMe ? 'sent' : 'received';
+        let timeStr = "";
+
+        if(m.uid && m.uid !== 'system') listenToUserUpdates(m.uid);
+
+        if(m.timestamp) {
+            const date = m.timestamp.toDate();
+            timeStr = date.getHours().toString().padStart(2,'0') + ":" + date.getMinutes().toString().padStart(2,'0');
+            const dateHeader = getFormattedDate(date);
+            if(dateHeader !== lastDateStr) {
+                box.innerHTML += `<div class="date-divider"><span>${dateHeader}</span></div>`;
+                lastDateStr = dateHeader;
+            }
+        }
+
+        const nameSpan = `<span class="sender user-name-${m.uid}">${m.user}</span>`;
+        let quotedBlock = "";
+
+        if (m.replyTo) {
+            quotedBlock = `
+            <div class="quoted-msg" onclick="scrollToMessage('${m.replyTo.id}')">
+                <span class="quoted-user">${m.replyTo.user}</span>
+                <span class="quoted-text">${m.replyTo.text}</span>
+            </div>`;
+        }
+
+        if (m.type === 'system') {
+            box.innerHTML += `<div class="msg system">${m.text}</div>`;
+            return; // System messages have no avatar
+        }
+        
+        if (m.image) {
+            content = `${nameSpan}${quotedBlock}<img class="msg-img-content" src="${m.image}" onclick="openImage('${m.image}')">`;
+        } else {
+            content = `${nameSpan}${quotedBlock}${linkify(m.text)}`;
+        }
+        
+        // Context menu helpers
+        const safeText = m.text ? encodeURIComponent(m.text) : "";
+        const safeUser = m.user ? m.user.replace(/'/g, "\\'") : "User";
+        const optsBtn = `<div class="opts-btn" title="Opties" onclick="handleContextMenu(event, '${doc.id}', '${m.uid}', '${safeUser}', '${safeText}')">•••</div>`;
+        const contextAttr = `oncontextmenu="handleContextMenu(event, '${doc.id}', '${m.uid}', '${safeUser}', '${safeText}')"`;
+
+        let editedSpan = m.edited ? `<span class="msg-edited">(bewerkt)</span>` : "";
+        let footerHtml = `<div class="msg-footer">${editedSpan}<span class="msg-time">${timeStr}</span></div>`;
+
+        // AVATAR LOGIC (Only for received messages in group/global)
+        let avatarHtml = "";
+        if (!isMe && (chatType === 'group' || chatType === 'global')) {
+            // Haal avatar uit cache of gebruik fallback
+            let avatarSrc = userCache.get(m.uid) || `https://ui-avatars.com/api/?name=${m.user}`;
+            // Geen onClick meer hier
+            avatarHtml = `<img src="${avatarSrc}" class="msg-avatar user-avatar-${m.uid}">`;
+        }
+
+        box.innerHTML += `
+        <div class="msg-container ${className}">
+            ${avatarHtml}
+            <div class="msg ${className}" id="msg-${doc.id}" ${contextAttr}>
+                ${optsBtn}${content}${footerHtml}
+            </div>
+        </div>`;
+    });
+
+    if (msgLimit === 50 || isAtBottom) box.scrollTop = box.scrollHeight;
+}
+
+function viewUserProfile(uid) {
+    // Simpele functie om foto in groot te zien
+    if(userCache.has(uid)) openImage(userCache.get(uid));
+}
+
+function handleContextMenu(e, mid, uid, uName, encodedText) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const text = encodedText ? decodeURIComponent(encodedText) : "";
+
+    const menu = document.getElementById('contextMenu');
+    const content = document.getElementById('ctxContent');
+    content.innerHTML = "";
+    
+    if (text) {
+        content.innerHTML += `
+        <div class="ctx-item" onclick="copyText(decodeURIComponent('${encodedText}')); hideContextMenu()">
+            <span>📋</span> Kopiëren
+        </div>`;
+    }
+
+    content.innerHTML += `
+        <div class="ctx-item" onclick="startReply('${mid}', '${uName}', decodeURIComponent('${encodedText || ""}')); hideContextMenu()">
+            <span>↩</span> Antwoorden
+        </div>`;
+
+    const isMe = uid === user.uid;
+    const admin = isAdmin();
+
+    if (!isMe) {
+        content.innerHTML += `
+        <div class="ctx-item" onclick="openReportModal(); hideContextMenu()">
+            <span>🚩</span> Rapporteren
+        </div>`;
+    }
+
+    if (isMe || admin) {
+        if (isMe && text) { 
+            content.innerHTML += `
+            <div class="ctx-item" onclick="startEdit('${mid}', decodeURIComponent('${encodedText}')); hideContextMenu()">
+                <span>✎</span> Bewerken
+            </div>`;
+        }
+        
+        let deleteLabel = "Verwijderen";
+        if (!isMe && admin) deleteLabel = "Verwijderen (Admin)";
+
+        content.innerHTML += `
+        <div class="ctx-item danger" onclick="confirmDelete('${mid}'); hideContextMenu()">
+            <span>🗑</span> ${deleteLabel}
+        </div>`;
+    }
+
+    menu.style.display = 'flex';
+    let x = e.clientX;
+    let y = e.clientY;
+
+    if (x + 160 > window.innerWidth) x -= 160;
+    if (y + menu.offsetHeight > window.innerHeight) y -= menu.offsetHeight;
+
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+}
+
+function openReportModal() {
+    document.getElementById('reportModal').style.display = 'flex';
+    if(typeof Tally !== 'undefined') Tally.loadEmbeds();
+}
+
+function hideContextMenu() {
+    document.getElementById('contextMenu').style.display = 'none';
+}
+
+function copyText(txt) {
+    navigator.clipboard.writeText(txt).then(() => {
+        notify("Gekopieerd", "Bericht gekopieerd naar klembord.");
+    }).catch(err => {
+        console.error('Copy failed', err);
+    });
+}
+
+function confirmDelete(mid) {
+    confirmAction("Verwijderen", "Wil je dit bericht definitief verwijderen?", () => deleteMessage(mid));
+}
+
+function startReply(mid, name, text) {
+    cancelReplyOrEdit();
+    replyContext = { id: mid, user: name, text: text || "[Afbeelding]" };
+    document.getElementById('replyPreview').style.display = 'flex';
+    document.getElementById('replyLabel').innerText = `Antwoorden op ${name}`;
+    document.getElementById('replyText').innerText = text || "[Afbeelding]";
+    document.getElementById('messageInput').focus();
+}
+
+function startEdit(mid, text) {
+    cancelReplyOrEdit();
+    editMessageId = mid;
+    document.getElementById('replyPreview').style.display = 'flex';
+    document.getElementById('replyLabel').innerText = "Bericht bewerken";
+    document.getElementById('replyText').innerText = text;
+    const inp = document.getElementById('messageInput');
+    inp.value = text;
+    inp.focus();
+    document.getElementById('sendBtn').innerText = "✓";
+}
+
+function cancelReplyOrEdit() {
+    replyContext = null;
+    editMessageId = null;
+    document.getElementById('replyPreview').style.display = 'none';
+    document.getElementById('messageInput').value = "";
+    document.getElementById('sendBtn').innerText = "➤";
+}
+
+function scrollToMessage(id) {
+    const el = document.getElementById(`msg-${id}`);
+    if(el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.style.background = "#2563eb66";
+        setTimeout(() => el.style.background = "", 1000);
+    } else {
+        notify("Info", "Bericht is te oud om naartoe te scrollen.");
+    }
+}
+
+function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault(); 
+        sendMessage();
+    }
+}
+
+// VERBETERDE TYPING HANDLER (Throttling)
+function handleTyping() {
+    const tx = document.getElementById('messageInput');
+    tx.style.height = 'auto'; tx.style.height = (tx.scrollHeight) + 'px';
+    
+    const now = Date.now();
+    // Update firebase maximaal 1x per 2.5 seconden
+    if (now - lastTypingUpdate > 2500) {
+        lastTypingUpdate = now;
+        updateTyping(true);
+    }
+    
+    // Reset de "stop met typen" timer - IETS LANGER GEMAAKT
+    if(typingTimeout) clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => { updateTyping(false); }, 4000);
+}
+
+async function updateTyping(isTyping) {
+    if(!activeChatId) return;
+    
+    // SCHRIJF NAAR METADATA (Iedereen heeft toegang)
+    const typingDocId = getTypingDocId();
+    const ref = db.collection("metadata").doc(typingDocId);
+    const myName = document.getElementById('myName').innerText;
+    
+    const payload = {};
+
+    if (isTyping) {
+        // GEBRUIK SET MET MERGE: Dit maakt het document aan als het er niet is
+        payload[`typingStatus.${user.uid}`] = { name: myName, time: Date.now() };
+        await ref.set(payload, { merge: true });
+    } else {
+        // STOPPEN MET TYPEN: Delete het veld
+        payload[`typingStatus.${user.uid}`] = firebase.firestore.FieldValue.delete();
+        // Update kan falen als doc niet bestaat, dat vangen we op
+        await ref.update(payload).catch(e => {
+            // Als het document niet bestaat, is er ook niemand aan het typen, dus prima.
+        });
+    }
+}
+
+async function resizeAndCompressImage(file) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const maxWidth = 800;
+                const scaleSize = maxWidth / img.width;
+                canvas.width = maxWidth;
+                canvas.height = img.height * scaleSize;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/jpeg', 0.7));
+            }
+        }
+    });
+}
+async function handleImageSend(input) {
+    if(input.files[0]) {
+        const compressed = await resizeAndCompressImage(input.files[0]);
+        pushMsg({ image: compressed });
+    }
+}
+
+// Drag and drop + paste image support
+const messageInput = document.getElementById('messageInput');
+const inputArea = document.querySelector('.chat-input');
+
+if (messageInput && inputArea) {
+    // Drag and drop
+    inputArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        inputArea.style.background = '#1e3a5f';
+        inputArea.style.border = '2px dashed #60a5fa';
+    });
+    
+    inputArea.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        inputArea.style.background = '';
+        inputArea.style.border = '';
+    });
+    
+    inputArea.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        inputArea.style.background = '';
+        inputArea.style.border = '';
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type.startsWith('image/')) {
+            const compressed = await resizeAndCompressImage(files[0]);
+            pushMsg({ image: compressed });
+            notify("Afbeelding verstuurd!", "");
+        }
+    });
+    
+    // Paste with Ctrl+V or Cmd+V
+    messageInput.addEventListener('paste', async (e) => {
+        const items = e.clipboardData.items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                e.preventDefault();
+                const file = items[i].getAsFile();
+                const compressed = await resizeAndCompressImage(file);
+                pushMsg({ image: compressed });
+                notify("Afbeelding verstuurd!", "");
+                break;
+            }
+        }
+    });
+}
+
+async function sendMessage() {
+    const inp = document.getElementById('messageInput');
+    const txt = inp.value.trim();
+    if(!txt) return;
+    
+    if(!isAdmin() && txt.length > 500) {
+        notify("Bericht te lang", "Maximaal 500 tekens toegestaan.", null, null, "error");
+        return;
+    }
+    
+    if(editMessageId) {
+        await updateMessageText(editMessageId, txt);
+        cancelReplyOrEdit();
+        return;
+    }
+
+    inp.value = ""; inp.style.height = "44px"; 
+    updateTyping(false);
+    if(typingTimeout) clearTimeout(typingTimeout);
+
+    const data = { text: txt };
+    if(replyContext) {
+        data.replyTo = replyContext;
+        cancelReplyOrEdit();
+    }
+
+    pushMsg(data);
+}
+
+async function updateMessageText(mid, newText) {
+    let ref;
+    if(chatType === 'global') ref = db.collection("chats");
+    else if(chatType === 'group') ref = db.collection("groups").doc(activeChatId).collection("messages");
+    else ref = db.collection("private_chats").doc([user.uid, activeChatId].sort().join("_")).collection("messages");
+    
+    await ref.doc(mid).update({ text: newText, edited: true });
+}
+
+async function pushMsg(data) {
+    const myName = document.getElementById('myName').innerText;
+    const payload = { ...data, user: myName, uid: user.uid, timestamp: firebase.firestore.FieldValue.serverTimestamp() };
+    if(chatType === 'global') await db.collection("chats").add(payload);
+    else if(chatType === 'group') await db.collection("groups").doc(activeChatId).collection("messages").add(payload);
+    else await db.collection("private_chats").doc([user.uid, activeChatId].sort().join("_")).collection("messages").add(payload);
+}
+
+async function deleteMessage(mid) {
+    let ref;
+    if(chatType === 'global') ref = db.collection("chats");
+    else if(chatType === 'group') ref = db.collection("groups").doc(activeChatId).collection("messages");
+    else ref = db.collection("private_chats").doc([user.uid, activeChatId].sort().join("_")).collection("messages");
+    await ref.doc(mid).delete();
+}
+
+async function sendSystemMessage(text) {
+    const payload = { text, type: 'system', user: 'System', uid: 'system', timestamp: firebase.firestore.FieldValue.serverTimestamp() };
+    if(chatType === 'group') await db.collection("groups").doc(activeChatId).collection("messages").add(payload);
+}
+
+// MEDIA GALLERY LOGIC
+async function openMediaGallery() {
+    closeModal('settingsModal');
+    const modal = document.getElementById('mediaGalleryModal');
+    const grid = document.getElementById('mediaGrid');
+    modal.style.display = 'flex';
+    grid.innerHTML = '<div style="text-align:center; padding:20px;">Laden...</div>';
+
+    let ref;
+    if(chatType === 'global') ref = db.collection("chats");
+    else if(chatType === 'group') ref = db.collection("groups").doc(activeChatId).collection("messages");
+    else ref = db.collection("private_chats").doc([user.uid, activeChatId].sort().join("_")).collection("messages");
+
+    const snap = await ref.orderBy("timestamp", "desc").get();
+    grid.innerHTML = "";
+    let count = 0;
+
+    snap.forEach(doc => {
+        const d = doc.data();
+        if(d.image) {
+            count++;
+            grid.innerHTML += `<img src="${d.image}" class="media-item" onclick="openImage('${d.image}')">`;
+        }
+    });
+
+    if(count === 0) grid.innerHTML = '<div style="text-align:center; color:gray; padding:20px;">Geen media gevonden.</div>';
+}
+
+// SETTINGS & MODALS
+async function openChatSettings() {
+    const modal = document.getElementById('settingsModal');
+    const content = document.getElementById('settingsContent');
+    modal.style.display = 'flex';
+    content.innerHTML = "<h3>Instellingen</h3>Laden...";
+
+    // Nieuwe Media knop definities (donkerdere achtergrond voor witte tekst)
+    const mediaBtnPrivate = `<button class="btn" style="flex:1; background:#476952; color:white;" onclick="openMediaGallery()">Media</button>`;
+    const mediaBtnFull = `<button class="btn full-btn" style="background:#476952; color:white; margin-bottom:5px;" onclick="openMediaGallery()">Media</button>`;
+
+    if (chatType === 'private') {
+        content.innerHTML = `
+            <h3>${document.getElementById('activeChatName').innerText}</h3>
+            <div style="display:flex; gap:10px; margin-bottom: 5px;">
+                ${mediaBtnPrivate}
+                <button class="btn btn-danger" style="flex:1;" onclick="confirmAction('Vriend verwijderen', 'Weet je zeker?', removeFriend)">Verwijder Vriend</button>
+            </div>
+            <button class="btn full-btn" style="background:#334155" onclick="closeModal('settingsModal')">Sluiten</button>
+        `;
+    } else if (chatType === 'group') {
+        const gDoc = await db.collection("groups").doc(activeChatId).get();
+        if(!gDoc.exists) return;
+        const gData = gDoc.data();
+        const isOwner = gData.owner === user.uid;
+        
+        let html = `<h3>${gData.name}</h3>`;
+        
+        if(isOwner) {
+            html += `
+            <div style="margin-bottom:15px; border-bottom:1px solid #1e293b; padding-bottom:10px;">
+                <label style="font-size:12px; color:gray">Aanpassen:</label>
+                <div style="display:flex; flex-direction:column; gap:8px; margin-top:5px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <img id="groupEditPreview" src="${gData.pic}" style="width:40px; height:40px; border-radius:50%">
+                        <input type="text" id="groupEditName" value="${gData.name}" style="margin:0">
+                    </div>
+                    <div style="display:flex; gap:5px;">
+                        <input type="file" id="groupEditFile" hidden onchange="previewImage(this, 'groupEditPreview')">
+                        <button class="btn btn-sm" onclick="document.getElementById('groupEditFile').click()">Wijzig Foto</button>
+                        <button class="btn btn-sm" onclick="updateGroupInfo()">Opslaan</button>
+                    </div>
+                </div>
+            </div>`;
+        }
+        html += `<div style="max-height:200px; overflow-y:auto; margin:10px 0;">`;
+        for(let mid of gData.members) {
+            let mName = "Lid";
+            if(mid === user.uid) mName = "Jij";
+            else {
+                const uDoc = await db.collection("users").doc(mid).get();
+                if(uDoc.exists) mName = uDoc.data().name;
+            }
+            html += `<div class="member-row">
+                <span>${mName} ${gData.owner === mid ? '👑' : ''}</span>
+                <div style="display:flex; gap:5px;">
+                   ${isOwner && mid !== user.uid ? `
+                        <button class="btn btn-sm btn-icon" style="width:30px; height:30px; padding:0; background:#334155" title="Maak Beheerder" onclick="confirmAction('Beheerder maken', 'Eigenaar wijzigen?', () => transferOwner('${mid}', '${mName}'))">👑</button>
+                        <button class="btn btn-sm btn-danger" style="width:30px; height:30px; padding:0;" title="Verwijder Lid" onclick="confirmAction('Lid Verwijderen', '${mName} verwijderen uit de groep?', () => kickMember('${mid}', '${mName}'))">🗑️</button>
+                   ` : ''}
+                </div>
+            </div>`;
+        }
+        html += `</div>`;
+        
+        if(isOwner) {
+            html += mediaBtnFull; // Boven Lid Toevoegen
+            html += `<button class="btn full-btn" onclick="openAddMemberModal()">+ Lid Toevoegen</button>`;
+            html += `<button class="btn btn-danger full-btn" onclick="confirmAction('Groep Verwijderen', 'Zeker weten?', deleteGroup)">Groep Verwijderen</button>`;
+        } else {
+            html += mediaBtnFull; // Boven Groep Verlaten
+            html += `<button class="btn btn-danger full-btn" onclick="confirmAction('Verlaten', 'Groep verlaten?', leaveGroup)">Groep Verlaten</button>`;
+        }
+        html += `<button class="btn full-btn" style="background:#334155" onclick="closeModal('settingsModal')">Sluiten</button>`;
+        content.innerHTML = html;
+    }
+}
+
+async function openAddMemberModal() {
+    const list = document.getElementById('addMemberList');
+    document.getElementById('addMemberModal').style.display = 'flex';
+    list.innerHTML = "Laden...";
+    const gDoc = await db.collection("groups").doc(activeChatId).get();
+    const currentMembers = gDoc.exists ? gDoc.data().members : [];
+    const friendsSnap = await db.collection("users").doc(user.uid).collection("friends").get();
+    let content = "";
+    friendsSnap.forEach(doc => {
+        if(!currentMembers.includes(doc.id)) {
+            content += `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #334155;">
+                    <span>${doc.data().name}</span>
+                    <button class="btn btn-sm" onclick="addMemberToGroup('${doc.id}', '${doc.data().name}')">Toevoegen</button>
+                </div>`;
+        }
+    });
+    list.innerHTML = content || "<div style='text-align:center; color:gray'>Iedereen zit er al in!</div>";
+}
+async function addMemberToGroup(newId, newName) {
+    await db.collection("groups").doc(activeChatId).update({ members: firebase.firestore.FieldValue.arrayUnion(newId) });
+    await sendSystemMessage(`${document.getElementById('myName').innerText} heeft ${newName} toegevoegd.`);
+    closeModal('addMemberModal'); openChatSettings();
+}
+function confirmAction(title, text, actionFn) {
+    document.getElementById('confirmTitle').innerText = title;
+    document.getElementById('confirmText').innerText = text;
+    document.getElementById('confirmModal').style.display = 'flex';
+    document.getElementById('confirmYesBtn').onclick = () => { actionFn(); closeModal('confirmModal'); };
+}
+async function updateGroupInfo() {
+    const newName = document.getElementById('groupEditName').value;
+    const imgPreview = document.getElementById('groupEditPreview').src;
+    await db.collection("groups").doc(activeChatId).update({ name: newName, pic: imgPreview });
+    notify("Aangepast", "Groepsinformatie bijgewerkt"); openChatSettings();
+}
+async function deleteGroup() { await db.collection("groups").doc(activeChatId).delete(); activeChatId = null; document.getElementById('chatMessages').innerHTML = ""; document.getElementById('inputArea').style.display = 'none'; closeModal('settingsModal'); renderSidebar(); }
+async function removeFriend() { await db.collection("users").doc(user.uid).collection("friends").doc(activeChatId).delete(); await db.collection("users").doc(activeChatId).collection("friends").doc(user.uid).delete(); location.reload(); }
+async function leaveGroup() { await sendSystemMessage(`${document.getElementById('myName').innerText} heeft de groep verlaten.`); await db.collection("groups").doc(activeChatId).update({ members: firebase.firestore.FieldValue.arrayRemove(user.uid) }); location.reload(); }
+async function kickMember(mid, mName) { await sendSystemMessage(`${mName} is verwijderd door de beheerder.`); await db.collection("groups").doc(activeChatId).update({ members: firebase.firestore.FieldValue.arrayRemove(mid) }); openChatSettings(); }
+async function transferOwner(newId, newName) { await sendSystemMessage(`${document.getElementById('myName').innerText} heeft ${newName} beheerder gemaakt.`); await db.collection("groups").doc(activeChatId).update({ owner: newId }); openChatSettings(); }
+
+function notify(title, body, icon, chatId, type) {
+    // 1. De Toast (In-app melding)
+    // Deze tonen we alleen als we NIET in die specifieke chat zitten
+    if (activeChatId !== chatId) {
+        const box = document.getElementById('toast-container');
+        if (box) {
+            const t = document.createElement('div');
+            t.className = 'toast';
+            t.innerHTML = `<img src="${icon || 'https://ui-avatars.com/api/?name=Msg'}" style="width:30px;height:30px;border-radius:50%"><div><b>${title}</b><br><small>${body}</small></div>`;
+            t.onclick = () => { 
+                window.focus(); 
+                if(chatId) openChat(chatId, title, icon, type); 
+                t.remove(); 
+            };
+            box.appendChild(t);
+            setTimeout(() => t.remove(), 4000);
+        }
+    }
+
+    // 2. De Desktop Notificatie (Windows/Mac/Safari) - Altijd sturen behalve als je in dezelfde chat zit en het venster actief is
+    if ("Notification" in window && Notification.permission === "granted") {
+        // Stuur melding tenzij: je in de juiste chat zit EN het venster actief is
+        const isActiveInChat = activeChatId === chatId && document.hasFocus();
+
+        if (!isActiveInChat) {
+            const n = new Notification(title, { 
+                body: body, 
+                icon: icon || "https://ui-avatars.com/api/?name=Chat" 
+            });
+            
+            n.onclick = function() { 
+                window.focus(); 
+                this.close(); 
+                if(chatId) openChat(chatId, title, icon, type); 
+            };
+        }
+    }
+}
+async function saveProfile() {
+    const name = document.getElementById('editName').value;
+    if (checkProfanity(name)) { document.getElementById('profileError').style.display = 'block'; return; }
+    const update = { name }; if(currentBase64) update.pic = currentBase64;
+    await db.collection("users").doc(user.uid).update(update);
+    closeModal('profileModal');
+}
+function switchTab(t, el) { document.querySelectorAll('.tab').forEach(x => x.classList.remove('active')); el.classList.add('active'); renderSidebar(); }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function openImage(src) { document.getElementById('imgViewer').src = src; document.getElementById('imgDownload').href = src; document.getElementById('imageModal').style.display = 'flex'; }
+function openProfile() { currentBase64 = null; document.getElementById('editName').value = document.getElementById('myName').innerText; document.getElementById('editPreview').src = document.getElementById('myAvatar').src; document.getElementById('profileError').style.display = 'none'; document.getElementById('profileModal').style.display = 'flex'; }
+function openGroupModal() {
+    currentBase64 = null; document.getElementById('groupCreatePreview').src = "https://ui-avatars.com/api/?name=Group";
+    document.getElementById('groupModal').style.display = 'flex';
+    const list = document.getElementById('inviteList'); list.innerHTML = "Laden...";
+    db.collection("users").doc(user.uid).collection("friends").get().then(snap => {
+        list.innerHTML = snap.empty ? "Geen vrienden." : "";
+        snap.forEach(doc => { list.innerHTML += `<div style="display:flex; justify-content:space-between; padding:5px;"><span>${doc.data().name}</span><input type="checkbox" class="invite-chk" value="${doc.id}"></div>`; });
+    });
+}
+
+// ----------------------------------------------------
+// AANGEPASTE VRIENDEN LOGICA (Verzoeken + Verzonden)
+// ----------------------------------------------------
+
+async function sendFriendRequest(targetId, targetName, targetPic) { 
+    try {
+        const meDoc = await db.collection("users").doc(user.uid).get();
+        const me = meDoc.data();
+        
+        await db.collection("users").doc(targetId).collection("requests").doc(user.uid).set({ 
+            name: me.name, 
+            pic: me.pic || "",
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        }); 
+
+        await db.collection("users").doc(user.uid).collection("sentRequests").doc(targetId).set({ 
+            name: targetName,
+            pic: targetPic || "",
+            timestamp: firebase.firestore.FieldValue.serverTimestamp() 
+        });
+
+        notify("Verzonden", `Verzoek naar ${targetName}`); 
+        renderSidebar(); 
+    } catch(e) {
+        console.error(e);
+        alert("Kon verzoek niet versturen: " + e.message);
+    }
+}
+
+async function cancelSentRequest(targetId) {
+    if(!confirm("Verzoek intrekken?")) return;
+    
+    await db.collection("users").doc(targetId).collection("requests").doc(user.uid).delete();
+    await db.collection("users").doc(user.uid).collection("sentRequests").doc(targetId).delete();
+    
+    notify("Geannuleerd", "Vriendschapsverzoek ingetrokken");
+    renderSidebar();
+}
+
+async function acceptFriend(senderId, senderName, senderPic) {
+    try {
+        const meDoc = await db.collection("users").doc(user.uid).get();
+        const me = meDoc.data();
+
+        await db.collection("users").doc(user.uid).collection("friends").doc(senderId).set({ name: senderName, pic: senderPic || "" });
+        await db.collection("users").doc(senderId).collection("friends").doc(user.uid).set({ name: me.name, pic: me.pic || "" });
+
+        await db.collection("users").doc(user.uid).collection("requests").doc(senderId).delete();
+        await db.collection("users").doc(senderId).collection("sentRequests").doc(user.uid).delete();
+
+        notify("Vrienden!", `Je bent nu vrienden met ${senderName}`);
+        location.reload(); 
+    } catch(e) {
+        console.error(e);
+        alert("Er ging iets mis bij accepteren.");
+    }
+}
+
+async function declineRequest(senderId) { 
+    if(!confirm("Verzoek afwijzen?")) return; 
+    
+    await db.collection("users").doc(user.uid).collection("requests").doc(senderId).delete();
+    await db.collection("users").doc(senderId).collection("sentRequests").doc(user.uid).delete();
+    
+    renderSidebar();
+}
+
+const KLIPY_API_KEY = "0aJeDYJCwd1tXHGfOsqYItkpXlxpoxgPOdLTYDMMF6NtPEfmxcp3CGDrM3BBDYYv";
+const KLIPY_BASE = "https://api.klipy.com/api/v1/" + KLIPY_API_KEY;
+
+const emojiCategories = {
+    "😀": ["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","☺️","😚","😙","🥲","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥳","🥸","😎","🤓","🧐","😕","😟","🙁","☹️","😮","😯","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","👿","💀","☠️","💩"],
+    "❤️": ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","♥️","😻","💑","💏","🫀","🫂","🙏"],
+    "✋": ["✌️","🤞","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","✍️","💪","🤳","🦾","🦿","🦵","🦶","👂","🦻","👃"],
+    "🍔": ["🍏","🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑","🥦","🥬","🥒","🌶️","🫑","🌽","🥕","🥔","🍠","🥐","🥯","🍞","🥖","🥨","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🌭","🍔","🍟","🍕","🥪","🥙","🧆","🌮","🌯","🫔","🥗","🥘","🫕","🍝","🍜","🍲","🍛","🍣","🍱","🥟","🍤","🍙","🍚","🍘","🍥","🥠","🥮","🍢","🍡","🍧","🍨","🍦","🥧","🧁","🍰","🎂","🍮","🍭","🍬","🍫","🍿","🍩","🍪","🌰","🥜","🍯","🥛","🍼","☕","🍵","🧃","🥤","🧋","🍶","🍺","🍻","🥂","🍷","🥃","🍸","🍹","🧉","🍾","🧊"],
+    "⚽": ["⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎱","🪀","🏓","🏸","🏒","🏑","🥍","🏏","🪃","🥅","⛳","🪁","🏹","🎣","🤿","🥊","🥋","🎽","🛹","🛼","🛷","⛸","🥌","🎿","⛷️","🏂","🪂","🏋️","🤼","🤸","🤺","⛹️","🤾","🏌️","🏇","🧘","🏄","🏊","🤽","🚣","🧗","🚵","🚴","🏆","🥇","🥈","🥉","🏅","🎖️"],
+    "🚗": ["🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🛻","🚚","🚛","🚜","🏍️","🛵","🚲","🛴","🛺","🚨","🚔","🚍","🚘","🚖","🚡","🚠","🚟","🚃","🚋","🚞","🚝","🚄","🚅","🚈","🚂","🚆","🚇","🚊","🚉","✈️","🛫","🛬","🛩️","💺","🛰️","🚀","🛸","🚁","🛶","⛵","🚤","🛥️","🛳️","⛴️","🚢","⚓","⛽","🚧","🚦","🚥","🚏","🗺️","🗿","🗽","🗼","🏰","🏯","🏟️","🎡","🎢","🎠","⛲","🏖️","🏝️","🏜️","🌋","⛰️","🏔️","🗻","🏕️","⛺","🛖","🏠","🏡","🏘️","🏚️","🏗️","🏭","🏢","🏬","🏣","🏤","🏥","🏦","🏨","🏪","🏫"],
+    "💡": ["⌚","📱","📲","💻","⌨️","🖥️","🖨️","🖱️","🖲️","🕹️","💽","💾","💿","📀","📼","📷","📸","📹","🎥","📽️","🎞️","📞","☎️","📟","📠","📺","📻","🎙️","🎚️","🎛️","🧭","⏱️","⏲️","⏰","🕰️","⌛","⏳","📡","🔋","🔌","💡","🔦","🕯️","🪔","🧯","🛢️","💸","💵","💴","💶","💷","🪙","💰","💳","💎","⚖️","🔧","🔨","⚒️","🛠️","⛏️","🔩","⚙️","🪤","🧱","⛓️","🧲","🔫","💣","🧨","🪓","🔪","🗡️","⚔️","🛡️","🚬","⚰️","⚱️","🏺","🔮","📿","🧿","💈","⚗️","🔭","🔬","🩹","🩺","💊","💉","🩸","🦠","🧫","🧪","🌡️"],
+    "🔣": ["0️⃣","1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟","🔢","#️⃣","*️⃣","⏏️","▶️","⏸️","⏯️","⏹️","⏺️","⏭️","⏮️","⏩","⏪","⏫","⏬","◀️","🔼","🔽","➡️","⬅️","⬆️","⬇️","↗️","↘️","↙️","↖️","↕️","↔️","↪️","↩️","⤴️","⤵️","🔀","🔁","🔂","🔄","🔃","🎵","🎶","➕","➖","➗","✖️","♾️","💲","💱","™️","©️","®️","🔚","🔙","🔛","🔝","🔜","〰️","➰","➿","✔️","☑️","❌","❎","✅","💯","💮","🟢","🟡","🔴","🟠","🔵","🟣","⚫","⚪","🟤","🔺","🔻","🔸","🔹","🔶","🔷","🔳","🔲","▪️","▫️","◾","◽","◼️","◻️","🟥","🟧","🟨","🟩","🟦","🟪","⬛","⬜","🟫","🔈","🔇","🔉","🔊","🔔","🔕","📣","📢","💬","💭","🗯️","♠️","♣️","♥️","♦️","🃏","🎴","🀄"]
+};
+
+let currentEmojiCat = "😀";
+let emojiMenuOpen = false;
+let emojiDropdownRendered = false;
+
+function toggleEmojiMenu() {
+    const dropdown = document.getElementById('emojiDropdown');
+    emojiMenuOpen = !emojiMenuOpen;
+    dropdown.style.display = emojiMenuOpen ? 'block' : 'none';
+    
+    if(emojiMenuOpen && !emojiDropdownRendered) {
+        renderEmojiDropdown();
+        emojiDropdownRendered = true;
+    }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    if(!e.target.closest('#emojiDropdown') && !e.target.closest('button[onclick="toggleEmojiMenu()"]')) {
+        document.getElementById('emojiDropdown').style.display = 'none';
+        emojiMenuOpen = false;
+    }
+});
+
+function renderEmojiDropdown() {
+    const content = document.getElementById('emojiDropdownContent');
+    let html = '<div class="emoji-categories">';
+    for(const cat in emojiCategories) {
+        html += `<div class="emoji-cat-btn ${cat === currentEmojiCat ? 'active' : ''}" onclick="selectEmojiCategory('${cat}')">${cat}</div>`;
+    }
+    html += '</div>';
+    html += '<input type="text" class="emoji-search" placeholder="Zoek emoji..." onkeyup="searchEmojis(this.value)">';
+    html += '<div class="emoji-grid" id="emojiGrid"></div>';
+    
+    html += '<div id="gifContentDropdown" style="display:none; height:100%;">';
+    html += '<div style="padding: 8px;"><input type="text" id="gifSearch" placeholder="Search KLIPY" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: white; outline: none;" onkeyup="if(event.key === \'Enter\') searchGifs()"></div>';
+    html += '<div id="gifResults" class="gif-grid" style="padding: 8px; max-height: 200px; overflow-y: auto;"></div></div>';
+    
+    html += '<div id="stickerContentDropdown" style="display:none; height:100%; display: flex; align-items: center; justify-content: center;">';
+    html += '<div style="text-align: center; color: gray; padding: 20px;"><span style="font-size: 40px;">🎨</span><p>Stickers zijn binnenkort beschikbaar!</p></div></div>';
+    
+    content.innerHTML = html;
+    renderEmojis(currentEmojiCat);
+}
+
+function switchEmojiTab(tab) {
+    document.querySelectorAll('#emojiDropdown .emoji-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    const emojiGrid = document.getElementById('emojiGrid');
+    if(emojiGrid) emojiGrid.parentElement.style.display = tab === 'emoji' ? 'block' : 'none';
+    
+    const gifContent = document.getElementById('gifContentDropdown');
+    if(gifContent) gifContent.style.display = tab === 'gif' ? 'block' : 'none';
+    
+    const stickerContent = document.getElementById('stickerContentDropdown');
+    if(stickerContent) stickerContent.style.display = tab === 'sticker' ? 'flex' : 'none';
+    
+    if(tab === 'gif') {
+        const gifResults = document.getElementById('gifResults');
+        if(gifResults && gifResults.innerHTML === '') {
+            loadTrendingGifs();
+        }
+    }
+}
+
+function renderEmojiCategories() {
+    const container = document.getElementById('emojiContent');
+    let html = '<div class="emoji-categories">';
+    for(const cat in emojiCategories) {
+        html += `<div class="emoji-cat-btn ${cat === currentEmojiCat ? 'active' : ''}" onclick="selectEmojiCategory('${cat}')">${cat}</div>`;
+    }
+    html += '</div><input type="text" class="emoji-search" placeholder="Zoek emoji..." onkeyup="searchEmojis(this.value)"><div class="emoji-grid" id="emojiGrid"></div>';
+    container.innerHTML = html;
+}
+
+function selectEmojiCategory(cat) {
+    currentEmojiCat = cat;
+    document.querySelectorAll('#emojiDropdownContent .emoji-cat-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    renderEmojis(cat);
+}
+
+function renderEmojis(cat) {
+    const grid = document.getElementById('emojiGrid');
+    if(!grid) return;
+    let html = '';
+    emojiCategories[cat].forEach(emoji => {
+        html += `<div class="emoji-item" onclick="insertEmoji('${emoji}')">${emoji}</div>`;
+    });
+    grid.innerHTML = html;
+}
+
+function searchEmojis(query) {
+    const grid = document.getElementById('emojiGrid');
+    if(!grid) return;
+    if(!query) {
+        renderEmojis(currentEmojiCat);
+        return;
+    }
+    query = query.toLowerCase();
+    let allEmojis = [];
+    for(const cat in emojiCategories) {
+        allEmojis = allEmojis.concat(emojiCategories[cat]);
+    }
+    let filtered = allEmojis; // Simple filter - just show all for now
+    let html = '';
+    filtered.forEach(emoji => {
+        html += `<div class="emoji-item" onclick="insertEmoji('${emoji}')">${emoji}</div>`;
+    });
+    grid.innerHTML = html;
+}
+
+function insertEmoji(emoji) {
+    const inp = document.getElementById('messageInput');
+    inp.value += emoji;
+    inp.focus();
+    document.getElementById('emojiDropdown').style.display = 'none';
+    emojiMenuOpen = false;
+}
+
+async function loadTrendingGifs() {
+    const container = document.getElementById('gifResults');
+    if(container) container.innerHTML = '<p style="color:gray; text-align:center; padding:20px;">Laden...</p>';
+    
+    try {
+        // Try featured endpoint first
+        let res = await fetch(KLIPY_BASE + "/gifs/featured?limit=20");
+        let data = await res.json();
+        console.log("KLIPY response:", data);
+        
+        let gifs = [];
+        if(data.result && data.data && data.data.data) {
+            gifs = data.data.data;
+        } else if(data.results) {
+            gifs = data.results;
+        } else if(Array.isArray(data)) {
+            gifs = data;
+        }
+        
+        // If no results, try trending
+        if(gifs.length === 0) {
+            res = await fetch(KLIPY_BASE + "/gifs/trending?limit=20");
+            data = await res.json();
+            gifs = data.data?.data || data.results || [];
+        }
+        
+        renderGifs(gifs);
+    } catch(e) {
+        console.error("Error loading gifs:", e);
+        if(container) container.innerHTML = '<p style="color:gray; text-align:center;">Kon GIFs niet laden</p>';
+    }
+}
+
+async function searchGifs() {
+    const query = document.getElementById('gifSearch').value.trim();
+    if(!query) return;
+    
+    const container = document.getElementById('gifResults');
+    if(container) container.innerHTML = '<p style="color:gray; text-align:center; padding:20px;">Zoeken...</p>';
+    
+    try {
+        const res = await fetch(KLIPY_BASE + "/gifs/search?q=" + encodeURIComponent(query) + "&limit=20");
+        const data = await res.json();
+        const gifs = data.data?.data || data.results || [];
+        renderGifs(gifs);
+    } catch(e) {
+        console.error("Error searching gifs:", e);
+        if(container) container.innerHTML = '<p style="color:gray; text-align:center;">Kon niet zoeken</p>';
+    }
+}
+
+function renderGifs(gifs) {
+    const container = document.getElementById('gifResults');
+    if(!container) return;
+    if(!gifs || gifs.length === 0) {
+        container.innerHTML = '<p style="color:gray; text-align:center;">Geen GIFs gevonden</p>';
+        return;
+    }
+    let html = '<div class="gif-grid">';
+    gifs.forEach(gif => {
+        // KLIPY uses files array, try multiple formats
+        let url = '';
+        
+        // Try KLIPY files format
+        if(gif.files && Array.isArray(gif.files)) {
+            const nanogif = gif.files.find(f => f?.format === 'nanogif');
+            const gifFormat = gif.files.find(f => f?.format === 'gif');
+            url = nanogif?.url || gifFormat?.url || '';
+        }
+        
+        // Fallback to media_formats (like Tenor/Giphy)
+        if(!url && gif.media_formats) {
+            url = gif.media_formats.nanogif || gif.media_formats.tinygif || gif.media_formats.gif || '';
+        }
+        
+        // Fallback to direct url field
+        if(!url && gif.url) {
+            url = gif.url;
+        }
+        
+        if(url) {
+            html += `<img class="gif-item" src="${url}" onclick="sendGif('${url}')">`;
+        }
+    });
+    html += '</div>';
+    if(html === '<div class="gif-grid"></div>') {
+        container.innerHTML = '<p style="color:gray; text-align:center;">Geen GIFs gevonden</p>';
+    } else {
+        container.innerHTML = html;
+    }
+}
+
+function sendGif(url) {
+    if(!activeChatId) {
+        notify("Geen chat geselecteerd", "Selecteer eerst een chat");
+        return;
+    }
+    
+    document.getElementById('emojiDropdown').style.display = 'none';
+    emojiMenuOpen = false;
+    
+    let ref;
+    if(chatType === 'global') ref = db.collection("chats");
+    else if(chatType === 'group') ref = db.collection("groups").doc(activeChatId).collection("messages");
+    else ref = db.collection("private_chats").doc([user.uid, activeChatId].sort().join("_")).collection("messages");
+    
+    ref.add({
+        text: "",
+        image: url,
+        uid: user.uid,
+        user: user.displayName || user.email,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    
+    notify("GIF verstuurd!", "");
+}
+    // Wacht tot de DOM geladen is om de textarea te vinden
+document.addEventListener('DOMContentLoaded', () => {
+    const msgInput = document.getElementById('messageInput');
+    if (!msgInput) return;
+
+    // 1. Plakken (Ctrl+V)
+    msgInput.addEventListener('paste', function(e) {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let index in items) {
+            const item = items[index];
+            if (item.kind === 'file' && item.type.indexOf('image/') !== -1) {
+                const blob = item.getAsFile();
+                // Gebruik je bestaande handleImageSend functie
+                handleImageSend({ files: [blob] });
+            }
+        }
+    });
+
+    // 2. Slepen en Neerzetten (Drag & Drop)
+    msgInput.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        msgInput.style.border = "2px dashed var(--primary)"; // Visuele hint
+    });
+
+    msgInput.addEventListener('dragleave', () => {
+        msgInput.style.border = "1px solid #1e293b"; // Herstel border
+    });
+
+    msgInput.addEventListener('drop', (e) => {
+        e.preventDefault();
+        msgInput.style.border = "1px solid #1e293b";
+        
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            const file = e.dataTransfer.files[0];
+            if (file.type.startsWith('image/')) {
+                handleImageSend({ files: [file] });
+            }
+        }
+    });
+});
+</script>
+<script>var d=document,w="https://tally.so/widgets/embed.js",v=function(){"undefined"!=typeof Tally?Tally.loadEmbeds():d.querySelectorAll("iframe[data-tally-src]:not([src])").forEach((function(e){e.src=e.dataset.tallySrc}))};if("undefined"!=typeof Tally)v();else if(d.querySelector('script[src="'+w+'"]')==null){var s=d.createElement("script");s.src=w,s.onload=v,s.onerror=v,d.body.appendChild(s);}</script>
+</body>
+</html>

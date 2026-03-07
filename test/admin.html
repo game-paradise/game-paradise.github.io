@@ -3,7 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <title>Game Paradise - Admin</title>
-    <link rel="icon" type="image/png" href="/icon/favicon.png">
+    <link rel="icon" type="image/png" href="icon/favicon.png">
+<link rel="apple-touch-icon" href="icon/favicon.png">
+<link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2563eb">
+
+<script>
+  // Dit zorgt ervoor dat de browser de app-bestanden registreert
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('Service Worker geregistreerd!', reg))
+        .catch(err => console.error('Service Worker mislukt:', err));
+    });
+  }
+</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -75,7 +90,6 @@
     <button class="nav-btn" id="btn-games" onclick="showTab('games')">🎮 Games Lijst</button>
     <button class="nav-btn" id="btn-categories" onclick="showTab('categories')">📂 Categorieën</button>
     <button class="nav-btn" id="btn-updates" onclick="showTab('updates')">🔔 Updates</button>
-    <button class="nav-btn" id="btn-chat" onclick="showTab('chat')">💬 Chat Beheer</button>
     <button class="nav-btn" id="btn-tasks" onclick="showTab('tasks')">✅ Ideeën & Taken</button>
     <button class="nav-btn" id="btn-admin" onclick="showTab('admin')">⚙️ Administratie</button>
     <button class="nav-btn" id="btn-banned" onclick="showTab('banned')">🚫 Gebanned Woorden</button>
@@ -169,11 +183,6 @@
             <h3>Recente Updates</h3>
             <div id="updatesList"></div>
         </div>
-    </div>
-
-    <div id="chatSection" class="section">
-        <div class="card"><button class="btn danger" onclick="clearAllChat()">🚨 Wis Hele Chat</button></div>
-        <div id="adminChatList"></div>
     </div>
 
     <div id="tasksSection" class="section">
@@ -391,18 +400,6 @@ function init() {
                 </div>`;
         });
     });
-
-    // Chat
-    db.collection("chats").orderBy("timestamp", "desc").limit(20).onSnapshot(s => {
-        const list = document.getElementById('adminChatList');
-        list.innerHTML = "";
-        s.forEach(doc => {
-            list.innerHTML += `<div class="card" style="padding:10px;">
-                <b>${doc.data().user}:</b> ${doc.data().text} 
-                <button class="btn danger" style="float:right; padding:5px" onclick="deleteItem('chats','${doc.id}')">X</button>
-            </div>`;
-        });
-    });
 }
 
 /* --- GEBRUIKERS BEHEER LOGICA --- */
@@ -607,14 +604,6 @@ function addCategory() {
 
 function deleteItem(col, id) {
     if(confirm("Zeker weten verwijderen?")) db.collection(col).doc(id).delete().then(() => notify("Verwijderd."));
-}
-
-async function clearAllChat() {
-    if(confirm("Hele chat wissen?")) {
-        const snap = await db.collection("chats").get();
-        snap.forEach(doc => doc.ref.delete());
-        notify("Chat leeggemaakt.");
-    }
 }
 
 /* ---------------- TAKEN / IDEEËN ---------------- */

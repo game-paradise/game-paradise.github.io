@@ -4,21 +4,19 @@
     <meta charset="UTF-8">
     <title>Game Paradise - Admin</title>
     <link rel="icon" type="image/png" href="/icon/favicon.png">
-<link rel="apple-touch-icon" href="/icon/favicon512x512.png">
-<link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="/icon/favicon512x512.png">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#2563eb">
 
-<script>
-  // Dit zorgt ervoor dat de browser de app-bestanden registreert
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js')
-        .then(reg => console.log('Service Worker geregistreerd!', reg))
-        .catch(err => console.error('Service Worker mislukt:', err));
-    });
-  }
-</script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js')
+            .then(reg => console.log('Service Worker geregistreerd!', reg))
+            .catch(err => console.error('Service Worker mislukt:', err));
+        });
+      }
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -71,7 +69,7 @@
         
         /* User List Specific */
         .user-item { display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 10px; border-radius: 8px; margin-bottom: 8px; }
-        .user-info small { color: #94a3b8; display: block; }
+        .user-info small { color: #94a3b8; display: block; margin-top: 3px; }
         
         /* Task Specific */
         .task-item { transition: all 0.2s ease; }
@@ -110,7 +108,7 @@
 
         <div class="card">
             <h3>🧪 Test Omgeving</h3>
-            <p>Klik op de knop hieronder om naar de testversie van de website te bekijken.</p>
+            <p>Klik op de knop hieronder om naar de testversie van de website te gaan.</p>
             <button class="btn primary" onclick="location.href='/test/admin.html'">Naar Test website</button>
         </div>
     </div>
@@ -121,7 +119,7 @@
             <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
                 <p style="margin-top:0; color: #fca5a5;"><b>⚠️ Belangrijk:</b> Dit admin paneel verwijdert alle data uit de database (profiel, chats, savegames), maar <b>NIET</b> het login-account.</p>
                 <p>Klik na het verwijderen hieronder op deze knop om het account definitief te wissen:</p>
-                <p> je moet ook bij /privatechats/(UID)_(UID) alles verwijderen dat van dat userID is (ctrl+f)</p>
+                <p>Je moet ook bij /privatechats/(UID)_(UID) alles verwijderen dat van dat userID is (ctrl+f)</p>
                 <a href="https://console.firebase.google.com/u/0/project/gameparadise-80490/authentication/users" 
                    target="_blank" class="btn warning" style="text-decoration:none; display:inline-block;">
                    🔗 Open Firebase Auth Console
@@ -238,7 +236,7 @@
         </div>
     </div>
 
-   <div id="adminSection" class="section">
+    <div id="adminSection" class="section">
         <div class="card">
             <h3>⚠️ Gebruikers met Waarschuwing</h3>
             <div style="margin-bottom:15px;">
@@ -253,7 +251,7 @@
         <div class="card">
             <h3>🚫 Uitgeschakelde Gebruikers</h3>
             <div style="margin-bottom:15px;">
-                <input id="disabledUid" placeholder="Gebruiker UID..." style="width:250px; display:inline-block; margin-right:10px;">
+                <input id="disabledUid" placeholder="Gebruiker UID..." style="width:250px; display:inline-block; margin-right:10px;" oninput="autoFillName(this.value, 'disabledReason')"> 
                 <input id="disabledReason" placeholder="Reden..." style="width:200px; display:inline-block; margin-right:10px;">
                 <button class="btn danger" onclick="addDisabled()">Toevoegen</button>
             </div>
@@ -283,13 +281,10 @@
             <div id="inactiveList"></div>
         </div>
     </div>
-                           </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <script>
+// --- FIREBASE CONFIGURATIE ---
 const firebaseConfig = {
     apiKey: "AIzaSyA0K4geAuueVfiItB_98-LkqRTnpYNUNvM",
     authDomain: "gameparadise-80490.firebaseapp.com",
@@ -303,11 +298,13 @@ const db = firebase.firestore();
 const auth = firebase.auth();
 const ADMINS = ["someoeneheilig@gmail.com", "melle1337k@gmail.com"];
 
-// Global user list cache
+// --- GLOBALS ---
 let allUsers = [];
 let currentUser = null;
 let userNamesCache = {};
+let adminData = {};
 
+// --- AUTHENTICATIE ---
 auth.onAuthStateChanged(user => {
     if (user && ADMINS.includes(user.email.toLowerCase())) {
         currentUser = { uid: user.uid, email: user.email };
@@ -346,6 +343,14 @@ function updatePreview(url) {
     }
 }
 
+function escapeHtml(text) {
+    if (!text) return "";
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// --- INITIALISATIE (Games, Categorieën, Updates) ---
 function init() {
     // Games
     db.collection("games").onSnapshot(s => {
@@ -408,7 +413,48 @@ function init() {
     });
 }
 
-/* --- GEBRUIKERS BEHEER LOGICA --- */
+// --- HULPFUNCTIES (Kopieer & Auto-invullen) ---
+async function loadUserNames() {
+    const snap = await db.collection("users").get();
+    snap.forEach(doc => {
+        const data = doc.data();
+        userNamesCache[doc.id] = (data.name && data.name !== "...") ? data.name : "Naamloos";
+    });
+}
+
+function getUserName(uid) {
+    return userNamesCache[uid] || "Naamloos";
+}
+
+function copyToClipboard(text) {
+    if (!navigator.clipboard) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+        notify("UID gekopieerd! (fallback)");
+        return;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+        notify("UID gekopieerd naar klembord!");
+    }).catch(err => console.error('Fout bij kopiëren: ', err));
+}
+
+function autoFillName(uid, targetInputId) {
+    const trimmedUid = uid.trim();
+    const name = userNamesCache[trimmedUid];
+    const targetInput = document.getElementById(targetInputId);
+    
+    if (targetInput && name) {
+        targetInput.value = name;
+        targetInput.style.backgroundColor = "rgba(34, 197, 94, 0.1)";
+        setTimeout(() => { targetInput.style.backgroundColor = ""; }, 1000);
+    }
+}
+
+// --- GEBRUIKERS BEHEER LOGICA ---
 function loadUsers() {
     db.collection("users").get().then(snap => {
         allUsers = [];
@@ -443,18 +489,10 @@ function renderUsers(users) {
     });
 }
 
-function autoFillName(uid, targetInputId) {
-    // We gebruiken de userNamesCache die al gevuld wordt bij het laden
-    const name = userNamesCache[uid];
-    if (name) {
-        document.getElementById(targetInputId).value = name;
-    }
-}
-
 function filterUsers() {
     const term = document.getElementById('userSearchInput').value.toLowerCase();
     const filtered = allUsers.filter(u => {
-        const name = (u.username || "").toLowerCase();
+        const name = (u.name || "").toLowerCase();
         const email = (u.email || "").toLowerCase();
         return name.includes(term) || email.includes(term) || u.id.includes(term);
     });
@@ -468,23 +506,14 @@ async function deleteFullUser(uid, name) {
     
     try {
         const userRef = db.collection("users").doc(uid);
-
-        // STAP 1: Vrienden & Privé Chats opruimen (Wederkerig)
-        // We moeten weten wie de vrienden zijn om de chats en de koppeling bij de ander te wissen.
         const friendsSnapshot = await userRef.collection("friends").get();
         const cleanupBatch = db.batch();
 
         friendsSnapshot.forEach(doc => {
             const friendId = doc.id;
-
-            // A. Verwijder DEZE user uit de vriendenlijst van de VRIEND
-            // Path: /users/{friendId}/friends/{uid}
             const otherSideRef = db.collection("users").doc(friendId).collection("friends").doc(uid);
             cleanupBatch.delete(otherSideRef);
 
-            // B. Verwijder de Private Chat Documenten
-            // Omdat de ID {UID1}_{UID2} kan zijn, proberen we beide combinaties.
-            // Als de doc niet bestaat, negeert de batch delete dit (geen error).
             const chatOption1 = db.collection("private_chats").doc(`${uid}_${friendId}`);
             const chatOption2 = db.collection("private_chats").doc(`${friendId}_${uid}`);
             
@@ -492,16 +521,11 @@ async function deleteFullUser(uid, name) {
             cleanupBatch.delete(chatOption2);
         });
 
-        // Voer de opschoning van vrienden en chats uit
         if (!friendsSnapshot.empty) {
             await cleanupBatch.commit();
-            console.log("Vriendenlijsten van anderen en chats opgeschoond.");
         }
 
-        // STAP 2: Verwijder Subcollecties van de user zelf
-        // (Handmatig opvragen en deleten omdat web-sdk geen recursive delete heeft)
         const subCollections = ["favorites", "saveData", "friends", "requests", "sentRequests"];
-        
         for (const sub of subCollections) {
             const snapshot = await userRef.collection(sub).get();
             if (!snapshot.empty) {
@@ -511,7 +535,6 @@ async function deleteFullUser(uid, name) {
             }
         }
 
-        // STAP 3: Verwijder Publieke Chat berichten van deze gebruiker
         const chatSnap = await db.collection("chats").where("uid", "==", uid).get();
         if (!chatSnap.empty) {
             const chatBatch = db.batch();
@@ -519,12 +542,8 @@ async function deleteFullUser(uid, name) {
             await chatBatch.commit();
         }
 
-        // STAP 4: Verwijder het User Document zelf
         await userRef.delete();
-
         notify(`✅ Alle data van ${name} succesvol verwijderd!`);
-        
-        // Ververs lijst
         loadUsers();
         
     } catch (error) {
@@ -532,8 +551,8 @@ async function deleteFullUser(uid, name) {
         alert("Fout bij verwijderen: " + error.message);
     }
 }
-/* -------------------------------- */
 
+// --- GAMES EN OVERIGE FUNCTIES ---
 function filterGamesTable() {
     const term = document.getElementById('gameSearch').value.toLowerCase();
     const rows = document.querySelectorAll('.game-row');
@@ -624,32 +643,6 @@ function deleteItem(col, id) {
 }
 
 /* ---------------- TAKEN / IDEEËN ---------------- */
-async function loadUserNames() {
-    const snap = await db.collection("users").get();
-    snap.forEach(doc => {
-        const data = doc.data();
-        // Sla de live naam op in de cache, check op "..."
-        userNamesCache[doc.id] = (data.name && data.name !== "...") ? data.name : "Naamloos";
-    });
-}
-
-function copyToClipboard(text) {
-    navigator.clipboard.writeText(text).then(() => {
-        notify("UID gekopieerd naar klembord!");
-    });
-}
-
-function autoFillName(uid, targetInputId) {
-    const name = userNamesCache[uid.trim()];
-    if (name) {
-        document.getElementById(targetInputId).value = name;
-    }
-}
-
-function getUserName(uid) {
-    return userNamesCache[uid] || "Laden...";
-}
-
 function addTask() {
     const title = document.getElementById('taskTitle').value.trim();
     const desc = document.getElementById('taskDesc').value.trim();
@@ -766,8 +759,6 @@ function toggleTask(taskId, completed) {
             at: new Date().toISOString()
         };
         
-        const currentActivity = task.activity || [];
-        
         taskRef.update({
             completed: completed,
             activity: firebase.firestore.FieldValue.arrayUnion(activityEntry)
@@ -779,21 +770,10 @@ function toggleTask(taskId, completed) {
 
 function deleteTask(taskId) {
     if (!confirm("Taak verwijderen?")) return;
-    db.collection("tasks").doc(taskId).delete().then(() => {
-        notify("Taak verwijderd!");
-    });
+    db.collection("tasks").doc(taskId).delete().then(() => notify("Taak verwijderd!"));
 }
 
-function escapeHtml(text) {
-    if (!text) return "";
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-/* ==================== ADMINISTRATIE ==================== */
-let adminData = {};
-
+/* ==================== ADMINISTRATIE LOGICA ==================== */
 function loadAdminData() {
     db.collection("admin").doc("settings").get().then(doc => {
         if (doc.exists) {
@@ -860,11 +840,9 @@ function addBannedWord() {
 
 function deleteBannedWord(idx) {
     if (!confirm("Woord verwijderen uit banned list?")) return;
-    
     const bannedWords = adminData.bannedWords || [];
     bannedWords.splice(idx, 1);
     adminData.bannedWords = bannedWords;
-    
     db.collection("admin").doc("settings").update({ bannedWords }).then(() => {
         notify("Woord verwijderd!");
         renderBannedWords();
@@ -872,19 +850,28 @@ function deleteBannedWord(idx) {
 }
 
 /* ==================== WAARSCHUWINGEN ==================== */
-function renderWarnings(warnings) {
+function renderWarnings() {
     const list = document.getElementById('warningsList');
-    list.innerHTML = warnings.map(w => {
-        // Gebruik de live naam uit de cache
+    const warnings = adminData.warnings || [];
+    
+    if (warnings.length === 0) {
+        list.innerHTML = '<p style="color:#64748b;">Nog geen waarschuwingen.</p>';
+        return;
+    }
+    
+    list.innerHTML = warnings.map((w, idx) => {
         const displayName = userNamesCache[w.uid] || w.chatName || "Naamloos";
         return `
-            <div class="user-item">
-                <div class="user-info">
-                    <strong>${displayName}</strong> 
-                    <small>(UID: ${w.uid} | ${w.count}x)</small>
-                </div>
-                <button class="btn danger" onclick="removeWarning('${w.id}')">Verwijderen</button>
+        <div class="user-item" style="margin-bottom:5px; border-left:3px solid var(--warning);">
+            <div class="user-info">
+                <strong>${escapeHtml(displayName)} (${w.count}/3)</strong>
+                <small>UID: ${escapeHtml(w.uid)}</small>
             </div>
+            <div>
+                <button class="btn" style="padding:5px 10px;" onclick="editWarning(${idx})">✏️</button>
+                <button class="btn danger" style="padding:5px 10px;" onclick="deleteWarning(${idx})">🗑️</button>
+            </div>
+        </div>
         `;
     }).join('');
 }
@@ -900,11 +887,8 @@ function addWarning() {
     const warnings = adminData.warnings || [];
     const existing = warnings.findIndex(w => w.uid === uid);
     
-    if (existing >= 0) {
-        warnings[existing] = { uid, chatName, count };
-    } else {
-        warnings.push({ uid, chatName, count });
-    }
+    if (existing >= 0) { warnings[existing] = { uid, chatName, count }; } 
+    else { warnings.push({ uid, chatName, count }); }
     
     adminData.warnings = warnings;
     db.collection("admin").doc("settings").update({ warnings }).then(() => {
@@ -927,7 +911,6 @@ function editWarning(idx) {
     
     warnings[idx].count = count;
     adminData.warnings = warnings;
-    
     db.collection("admin").doc("settings").update({ warnings }).then(() => {
         notify("Waarschuwing bijgewerkt!");
         renderWarnings();
@@ -936,11 +919,9 @@ function editWarning(idx) {
 
 function deleteWarning(idx) {
     if (!confirm("Waarschuwing verwijderen?")) return;
-    
     const warnings = adminData.warnings || [];
     warnings.splice(idx, 1);
     adminData.warnings = warnings;
-    
     db.collection("admin").doc("settings").update({ warnings }).then(() => {
         notify("Waarschuwing verwijderd!");
         renderWarnings();
@@ -957,15 +938,18 @@ function renderDisabled() {
         return;
     }
     
-    list.innerHTML = disabled.map((d, idx) => `
+    list.innerHTML = disabled.map((d, idx) => {
+        const displayName = userNamesCache[d.uid] || "Naamloos";
+        return `
         <div class="user-item" style="margin-bottom:5px; border-left:3px solid var(--danger);">
             <div class="user-info">
-                <strong>UID: ${escapeHtml(d.uid)}</strong>
-                <small>Reden: ${escapeHtml(d.reason || 'Geen reden')}</small>
+                <strong>${escapeHtml(displayName)}</strong>
+                <small>UID: ${escapeHtml(d.uid)} | Reden: ${escapeHtml(d.reason || 'Geen reden')}</small>
             </div>
             <button class="btn danger" style="padding:5px 10px;" onclick="deleteDisabled(${idx})">🗑️</button>
         </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function addDisabled() {
@@ -977,11 +961,8 @@ function addDisabled() {
     const disabled = adminData.disabled || [];
     const existing = disabled.findIndex(d => d.uid === uid);
     
-    if (existing >= 0) {
-        disabled[existing] = { uid, reason };
-    } else {
-        disabled.push({ uid, reason });
-    }
+    if (existing >= 0) { disabled[existing] = { uid, reason }; } 
+    else { disabled.push({ uid, reason }); }
     
     adminData.disabled = disabled;
     db.collection("admin").doc("settings").update({ disabled }).then(() => {
@@ -994,11 +975,9 @@ function addDisabled() {
 
 function deleteDisabled(idx) {
     if (!confirm("Uitgeschakelde gebruiker verwijderen?")) return;
-    
     const disabled = adminData.disabled || [];
     disabled.splice(idx, 1);
     adminData.disabled = disabled;
-    
     db.collection("admin").doc("settings").update({ disabled }).then(() => {
         notify("Verwijderd!");
         renderDisabled();
@@ -1006,22 +985,29 @@ function deleteDisabled(idx) {
 }
 
 /* ==================== VERWIJDERDE GEBRUIKERS ==================== */
-function renderDeleted(deleted) {
+function renderDeleted() {
     const list = document.getElementById('deletedList');
-    list.innerHTML = deleted.map(d => {
-        // Gebruik de live naam uit de cache
+    const deleted = adminData.deleted || [];
+    
+    if (deleted.length === 0) {
+        list.innerHTML = '<p style="color:#64748b;">Nog geen verwijderde gebruikers.</p>';
+        return;
+    }
+    
+    list.innerHTML = deleted.map((d, idx) => {
         const displayName = userNamesCache[d.uid] || d.name || "Naamloos";
         return `
-            <div class="user-item">
-                <div class="user-info">
-                    <strong>${displayName}</strong> 
-                    <small>Reden: ${d.reason || 'Geen'}</small>
-                </div>
-                <button class="btn danger" onclick="removeDeleted('${d.id}')">Verwijderen</button>
+        <div class="user-item" style="margin-bottom:5px; border-left:3px solid #94a3b8;">
+            <div class="user-info">
+                <strong>${escapeHtml(displayName)}</strong>
+                <small>UID: ${escapeHtml(d.uid)} | Reden: ${escapeHtml(d.reason || 'Geen reden')}</small>
             </div>
+            <button class="btn danger" style="padding:5px 10px;" onclick="deleteDeleted(${idx})">🗑️</button>
+        </div>
         `;
     }).join('');
 }
+
 function addDeleted() {
     const uid = document.getElementById('deletedUid').value.trim();
     const name = document.getElementById('deletedName').value.trim();
@@ -1032,11 +1018,8 @@ function addDeleted() {
     const deleted = adminData.deleted || [];
     const existing = deleted.findIndex(d => d.uid === uid);
     
-    if (existing >= 0) {
-        deleted[existing] = { uid, name, reason };
-    } else {
-        deleted.push({ uid, name, reason });
-    }
+    if (existing >= 0) { deleted[existing] = { uid, name, reason }; } 
+    else { deleted.push({ uid, name, reason }); }
     
     adminData.deleted = deleted;
     db.collection("admin").doc("settings").update({ deleted }).then(() => {
@@ -1050,11 +1033,9 @@ function addDeleted() {
 
 function deleteDeleted(idx) {
     if (!confirm("Verwijderen uit lijst?")) return;
-    
     const deleted = adminData.deleted || [];
     deleted.splice(idx, 1);
     adminData.deleted = deleted;
-    
     db.collection("admin").doc("settings").update({ deleted }).then(() => {
         notify("Verwijderd!");
         renderDeleted();
@@ -1075,19 +1056,10 @@ function addInactive() {
     const inactive = adminData.inactive || [];
     const existing = inactive.findIndex(i => i.uid === uid);
     
-    const entry = { 
-        uid, 
-        name, 
-        lastLogin: lastLoginDate,
-        endDate: endDate,
-        addedAt: new Date().toISOString() 
-    };
+    const entry = { uid, name, lastLogin: lastLoginDate, endDate: endDate, addedAt: new Date().toISOString() };
     
-    if (existing >= 0) {
-        inactive[existing] = entry;
-    } else {
-        inactive.push(entry);
-    }
+    if (existing >= 0) { inactive[existing] = entry; } 
+    else { inactive.push(entry); }
     
     adminData.inactive = inactive;
     db.collection("admin").doc("settings").update({ inactive }).then(() => {
@@ -1100,27 +1072,20 @@ function addInactive() {
     });
 }
 
-function renderInactive(inactive) {
+function renderInactive() {
     const list = document.getElementById('inactiveList');
-    list.innerHTML = inactive.map(i => {
-        // Gebruik de live naam uit de cache
-        const displayName = userNamesCache[i.uid] || i.name || "Naamloos";
-        return `
-            <div class="user-item">
-                <div class="user-info">
-                    <strong>${displayName}</strong> 
-                    <small>Einddatum: ${i.endDate || '?'}</small>
-                </div>
-                <button class="btn danger" onclick="removeInactive('${i.id}')">Verwijderen</button>
-            </div>
-        `;
-    }).join('');
-}
+    const inactive = adminData.inactive || [];
+    
+    if (inactive.length === 0) {
+        list.innerHTML = '<p style="color:#64748b;">Nog geen gebruikers toegevoegd.</p>';
+        return;
+    }
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     list.innerHTML = inactive.map((u, idx) => {
+        const displayName = userNamesCache[u.uid] || u.name || "Naamloos";
         const lastLogin = u.lastLogin ? new Date(u.lastLogin) : null;
         const endDate = u.endDate ? new Date(u.endDate) : null;
         
@@ -1135,26 +1100,18 @@ function renderInactive(inactive) {
             if (diffDays < 0) {
                 const overdueDays = Math.abs(diffDays);
                 const weeks = Math.floor(overdueDays / 7);
-                if (weeks < 1) {
-                    statusText = `${overdueDays} dag${overdueDays !== 1 ? 'en' : ''} te laat`;
-                } else if (weeks === 1) {
-                    statusText = `1 week te laat`;
-                } else {
-                    statusText = `${weeks} weken te laat`;
-                }
+                if (weeks < 1) { statusText = `${overdueDays} dag${overdueDays !== 1 ? 'en' : ''} te laat`; } 
+                else if (weeks === 1) { statusText = `1 week te laat`; } 
+                else { statusText = `${weeks} weken te laat`; }
                 statusColor = '#ef4444';
             } else if (diffDays === 0) {
                 statusText = `vandaag deadline!`;
                 statusColor = '#f59e0b';
             } else {
                 const weeks = Math.floor(diffDays / 7);
-                if (weeks < 1) {
-                    statusText = `nog ${diffDays} dag${diffDays !== 1 ? 'en' : ''}`;
-                } else if (weeks === 1) {
-                    statusText = `nog 1 week`;
-                } else {
-                    statusText = `nog ${weeks} weken`;
-                }
+                if (weeks < 1) { statusText = `nog ${diffDays} dag${diffDays !== 1 ? 'en' : ''}`; } 
+                else if (weeks === 1) { statusText = `nog 1 week`; } 
+                else { statusText = `nog ${weeks} weken`; }
                 statusColor = '#22c55e';
             }
         }
@@ -1162,22 +1119,21 @@ function renderInactive(inactive) {
         return `
         <div class="user-item" style="margin-bottom:5px; border-left:3px solid ${statusColor};">
             <div class="user-info">
-                <strong>${escapeHtml(u.name || 'Onbekend')}</strong>
+                <strong>${escapeHtml(displayName)}</strong>
                 <small>UID: ${escapeHtml(u.uid)} | Laatste login: ${lastLogin ? lastLogin.toLocaleDateString() : 'onbekend'}</small>
                 <small style="color:${statusColor};">${statusText} (tot ${endDate ? endDate.toLocaleDateString() : '-'})</small>
             </div>
             <button class="btn danger" style="padding:5px 10px;" onclick="deleteInactive(${idx})">🗑️</button>
         </div>
-    `}).join('');
+        `;
+    }).join('');
 }
 
 function deleteInactive(idx) {
     if (!confirm("Verwijderen?")) return;
-    
     const inactive = adminData.inactive || [];
     inactive.splice(idx, 1);
     adminData.inactive = inactive;
-    
     db.collection("admin").doc("settings").update({ inactive }).then(() => {
         notify("Verwijderd!");
         renderInactive();
@@ -1189,9 +1145,7 @@ let taskCategories = ['chat', 'homepage', 'admin', 'games'];
 
 function loadTaskCategories() {
     const stored = adminData.taskCategories;
-    if (stored && stored.length > 0) {
-        taskCategories = stored;
-    }
+    if (stored && stored.length > 0) { taskCategories = stored; }
     renderTaskCategorySelect();
     renderTaskCategoriesList();
 }
@@ -1199,7 +1153,6 @@ function loadTaskCategories() {
 function renderTaskCategorySelect() {
     const select = document.getElementById('taskCategorySelect');
     const filter = document.getElementById('taskFilter');
-    
     const options = taskCategories.map(c => `<option value="${c}">${c}</option>`).join('');
     select.innerHTML = `<option value="">Selecteer categorie...</option>${options}`;
     filter.innerHTML = `<option value="all">Alle categorieën</option>${taskCategories.map(c => `<option value="${c}">${c}</option>`).join('')}`;
@@ -1222,7 +1175,6 @@ function addTaskCategory() {
     
     taskCategories.push(name);
     adminData.taskCategories = taskCategories;
-    
     db.collection("admin").doc("settings").update({ taskCategories }).then(() => {
         notify("Categorie toegevoegd!");
         document.getElementById('newCategoryName').value = "";
@@ -1233,49 +1185,13 @@ function addTaskCategory() {
 
 function deleteTaskCategory(idx) {
     if (!confirm("Categorie verwijderen?")) return;
-    
     taskCategories.splice(idx, 1);
     adminData.taskCategories = taskCategories;
-    
     db.collection("admin").doc("settings").update({ taskCategories }).then(() => {
         notify("Categorie verwijderd!");
         renderTaskCategorySelect();
         renderTaskCategoriesList();
     });
-}
-    // Functie om UID te kopiëren naar klembord
-function copyToClipboard(text) {
-    if (!navigator.clipboard) {
-        // Fallback voor oudere browsers
-        const textArea = document.createElement("textarea");
-        textArea.value = text;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textArea);
-        notify("UID gekopieerd! (fallback)");
-        return;
-    }
-    navigator.clipboard.writeText(text).then(() => {
-        notify("UID gekopieerd naar klembord!");
-    }).catch(err => {
-        console.error('Fout bij kopiëren: ', err);
-    });
-}
-
-// Functie om automatisch de naam in te vullen op basis van de UID
-function autoFillName(uid, targetInputId) {
-    const trimmedUid = uid.trim();
-    // De userNamesCache wordt gevuld in de functie loadUserNames()
-    const name = userNamesCache[trimmedUid];
-    
-    const targetInput = document.getElementById(targetInputId);
-    if (targetInput && name) {
-        targetInput.value = name;
-        // Geef een subtiele visuele hint dat de naam gevonden is
-        targetInput.style.backgroundColor = "rgba(34, 197, 94, 0.1)";
-        setTimeout(() => { targetInput.style.backgroundColor = ""; }, 1000);
-    }
 }
 </script>
 </body>

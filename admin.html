@@ -100,20 +100,28 @@
 </div>
 
 <div class="main">
-    <div id="dashboardSection" class="section" style="display:block">
+<div id="dashboardSection" class="section" style="display:block">
         <div class="card">
             <h2>Welkom Admin</h2>
             <p>Gebruik het linker menu om de website te beheren.</p>
-            <div id="stats" style="margin-top:20px; font-weight:bold; color:var(--accent);">Laden...</div>
+            <div id="stats" style="margin-top:20px; font-weight:bold; color:var(--accent);">Laden van statistieken...</div>
         </div>
 
         <div class="card">
-            <h3>🧪 Test Omgeving</h3>
-            <p>Klik op de knop hieronder om naar de testversie van de website te gaan.</p>
-            <button class="btn primary" onclick="location.href='/test/admin.html'">Naar Test website</button>
+            <h3>🌐 Website Navigatie</h3>
+            <p>Schakel snel tussen de test-omgeving en de officiële beheerpagina.</p>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <button class="btn primary" onclick="location.href='/test/admin.html'">
+                    🧪 Naar Test website
+                </button>
+                
+                <button class="btn" style="background: #334155; color: white;" onclick="location.href='/admin.html'">
+                    🏠 Terug naar echte pagina
+                </button>
+            </div>
         </div>
     </div>
-
+        
     <div id="usersSection" class="section">
         <div class="card">
             <h3>👥 Gebruiker Verwijderen</h3>

@@ -875,13 +875,13 @@ function deleteBannedWord(idx) {
 function renderWarnings(warnings) {
     const list = document.getElementById('warningsList');
     list.innerHTML = warnings.map(w => {
-        // We halen de naam LIVE uit de cache op basis van de UID
+        // Gebruik de live naam uit de cache
         const displayName = userNamesCache[w.uid] || w.chatName || "Naamloos";
         return `
             <div class="user-item">
                 <div class="user-info">
                     <strong>${displayName}</strong> 
-                    <small>(${w.count}x waarschuwing)</small>
+                    <small>(UID: ${w.uid} | ${w.count}x)</small>
                 </div>
                 <button class="btn danger" onclick="removeWarning('${w.id}')">Verwijderen</button>
             </div>
@@ -1009,7 +1009,7 @@ function deleteDisabled(idx) {
 function renderDeleted(deleted) {
     const list = document.getElementById('deletedList');
     list.innerHTML = deleted.map(d => {
-        // We halen de naam LIVE uit de cache op basis van de UID
+        // Gebruik de live naam uit de cache
         const displayName = userNamesCache[d.uid] || d.name || "Naamloos";
         return `
             <div class="user-item">
@@ -1103,13 +1103,13 @@ function addInactive() {
 function renderInactive(inactive) {
     const list = document.getElementById('inactiveList');
     list.innerHTML = inactive.map(i => {
-        // We halen de naam LIVE uit de cache op basis van de UID
+        // Gebruik de live naam uit de cache
         const displayName = userNamesCache[i.uid] || i.name || "Naamloos";
         return `
             <div class="user-item">
                 <div class="user-info">
                     <strong>${displayName}</strong> 
-                    <small>Einddatum: ${i.endDate || 'Onbekend'}</small>
+                    <small>Einddatum: ${i.endDate || '?'}</small>
                 </div>
                 <button class="btn danger" onclick="removeInactive('${i.id}')">Verwijderen</button>
             </div>

@@ -4,7 +4,22 @@
     <meta charset="UTF-8">
     <title>Game Paradise - Home</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <link rel="icon" type="image/png" href="/icon/favicon.png">
+    <link rel="icon" type="image/png" href="icon/favicon.png">
+<link rel="apple-touch-icon" href="icon/favicon512x512.png">
+<link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
+
+<script>
+  // Dit zorgt ervoor dat de browser de app-bestanden registreert
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('Service Worker geregistreerd!', reg))
+        .catch(err => console.error('Service Worker mislukt:', err));
+    });
+  }
+</script>
     
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -21,14 +36,10 @@
         }
 
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-body {
-    margin: 0;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    background: var(--bg);
-    color: white;
-    display: flex;
-    min-height: 100vh;
-}
+        body {
+            margin: 0; font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg); color: white;
+            display: flex; height: 100vh; overflow: hidden;
         }
 
         /* --- SIDEBAR --- */
@@ -483,7 +494,7 @@ function renderGames() {
     // LOADING STATE 
     if(gamesLoading) {
         grid.innerHTML = "";
-        for(let i=0; i<24; i++) {
+        for(let i=0; i<8; i++) {
             grid.innerHTML += `<div class="game-card" style="height:165px; cursor:default; border-color:transparent;"><div class="skeleton"></div></div>`;
         }
         return;

@@ -102,7 +102,7 @@
 <div class="main">
 <div id="dashboardSection" class="section" style="display:block">
         <div class="card">
-            <h2>Welkom Admin - test pagina</h2>
+            <h2>Welkom Admin</h2>
             <p>Gebruik het linker menu om de website te beheren.</p>
             <div id="stats" style="margin-top:20px; font-weight:bold; color:var(--accent);">Laden van statistieken...</div>
         </div>
@@ -317,32 +317,21 @@ let userNamesCache = {};
 let adminData = {};
 
 // --- AUTHENTICATIE ---
-// --- BEVEILIGING & AUTH ---
-const ADMINS = ["someoeneheilig@gmail.com", "melle1337k@gmail.com"];
-
 auth.onAuthStateChanged(user => {
-    if (user) {
-        const userEmail = user.email ? user.email.toLowerCase() : "";
-        
-        if (ADMINS.includes(userEmail)) {
-            // GEBRUIKER IS ADMIN: Toon de pagina en laad de data
-            console.log("Toegang verleend aan admin:", userEmail);
-            document.getElementById('adminContent').style.display = 'flex'; // Maak de pagina zichtbaar
-            
-            loadUserNames().then(() => {
-                init();
-                loadAdminData();
-            });
-        } else {
-            // GEBRUIKER IS INGELOGD MAAR GEEN ADMIN
-            alert("Geen toegang: Je hebt geen admin-rechten.");
-            window.location.href = "index.html";
-        }
+    if (user && ADMINS.includes(user.email.toLowerCase())) {
+        currentUser = { uid: user.uid, email: user.email };
+        loadUserNames().then(() => {
+            init();
+            loadUsers();
+            loadTasks();
+            loadAdminData();
+        });
     } else {
-        // GEBRUIKER IS NIET INGELOGD
-        window.location.href = "index.html";
+        alert("Geen toegang! Log in met een admin account.");
+        location.href = "index.html";
     }
 });
+
 function notify(msg) {
     const t = document.createElement('div'); t.className = 'toast'; t.innerText = msg;
     document.getElementById('toast-container').appendChild(t);

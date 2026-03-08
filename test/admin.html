@@ -425,7 +425,8 @@ function renderUsers(users) {
     if(users.length === 0) { list.innerHTML = "<p>Geen gebruikers gevonden.</p>"; return; }
 
     users.forEach(u => {
-        const name = u.username || u.displayName || "Naamloos";
+        // Controleer of 'name' bestaat en niet gelijk is aan "..."
+        const name = (u.name && u.name !== "...") ? u.name : "Naamloos";
         const email = u.email || "Geen email";
         
         list.innerHTML += `

@@ -102,7 +102,7 @@
 <div class="main">
 <div id="dashboardSection" class="section" style="display:block">
         <div class="card">
-            <h2>Welkom Admin</h2>
+            <h2>Welkom Admin - officiële pagina</h2>
             <p>Gebruik het linker menu om de website te beheren.</p>
             <div id="stats" style="margin-top:20px; font-weight:bold; color:var(--accent);">Laden van statistieken...</div>
         </div>
@@ -259,14 +259,17 @@
 
         <div class="card">
             <h3>🚫 Uitgeschakelde Gebruikers</h3>
-            <div style="margin-bottom:15px;">
-                <input id="disabledUid" placeholder="Gebruiker UID..." style="width:250px; display:inline-block; margin-right:10px;" oninput="autoFillName(this.value, 'disabledReason')"> 
-                <input id="disabledReason" placeholder="Reden..." style="width:200px; display:inline-block; margin-right:10px;">
-                <button class="btn danger" onclick="addDisabled()">Toevoegen</button>
+            <div style="margin-bottom:15px; display: flex; gap: 10px; align-items: center;">
+                <input id="disabledUid" placeholder="Gebruiker UID..." style="flex: 2; margin-bottom: 0;" oninput="autoFillName(this.value, 'disabledName')"> 
+                
+                <input id="disabledName" placeholder="Naam..." style="flex: 1; margin-bottom: 0;">
+                
+                <input id="disabledReason" placeholder="Reden..." style="flex: 2; margin-bottom: 0;">
+                
+                <button class="btn danger" onclick="addDisabled()" style="white-space: nowrap;">Toevoegen</button>
             </div>
             <div id="disabledList"></div>
         </div>
-
         <div class="card">
             <h3>🗑️ Verwijderde Gebruikers</h3>
             <div style="margin-bottom:15px;">
@@ -963,6 +966,7 @@ function renderDisabled() {
 
 function addDisabled() {
     const uid = document.getElementById('disabledUid').value.trim();
+    const name = document.getElementById('disabledName').value.trim(); // Pakt nu ook de naam
     const reason = document.getElementById('disabledReason').value.trim();
     
     if (!uid) return notify("UID is verplicht!");
@@ -970,13 +974,17 @@ function addDisabled() {
     const disabled = adminData.disabled || [];
     const existing = disabled.findIndex(d => d.uid === uid);
     
-    if (existing >= 0) { disabled[existing] = { uid, reason }; } 
-    else { disabled.push({ uid, reason }); }
+    // Slaat nu UID, Naam en Reden op
+    const entry = { uid, name, reason };
+    
+    if (existing >= 0) { disabled[existing] = entry; } 
+    else { disabled.push(entry); }
     
     adminData.disabled = disabled;
     db.collection("admin").doc("settings").update({ disabled }).then(() => {
-        notify("Uitgeschakelde gebruiker toegevoegd/bijgewerkt!");
+        notify("Uitgeschakelde gebruiker opgeslagen!");
         document.getElementById('disabledUid').value = "";
+        document.getElementById('disabledName').value = "";
         document.getElementById('disabledReason').value = "";
         renderDisabled();
     });

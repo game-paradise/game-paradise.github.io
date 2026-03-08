@@ -238,51 +238,51 @@
         </div>
     </div>
 
-    <div id="adminSection" class="section">
-        <div class="card">
-            <h3>⚠️ Gebruikers met Waarschuwing</h3>
-            <div style="margin-bottom:15px;">
-                <input id="warnUserUid" placeholder="Gebruiker UID..." style="width:250px; display:inline-block; margin-right:10px;">
-                <input id="warnChatName" placeholder="Chatnaam..." style="width:150px; display:inline-block; margin-right:10px;">
-                <input id="warnCount" type="number" placeholder="1-3" min="1" max="3" style="width:70px; display:inline-block;">
-                <button class="btn warning" onclick="addWarning()">Toevoegen</button>
-            </div>
-            <div id="warningsList"></div>
+   <div id="adminSection" class="section">
+    <div class="card">
+        <h3>⚠️ Gebruikers met Waarschuwing</h3>
+        <div style="margin-bottom:15px;">
+            <input id="warnUserUid" placeholder="Gebruiker UID..." style="width:250px; display:inline-block; margin-right:10px;" oninput="autoFillName(this.value, 'warnChatName')">
+            <input id="warnChatName" placeholder="Chatnaam..." style="width:150px; display:inline-block; margin-right:10px;">
+            <input id="warnCount" type="number" placeholder="1-3" min="1" max="3" style="width:70px; display:inline-block;">
+            <button class="btn warning" onclick="addWarning()">Toevoegen</button>
         </div>
-
-        <div class="card">
-            <h3>🚫 Uitgeschakelde Gebruikers</h3>
-            <div style="margin-bottom:15px;">
-                <input id="disabledUid" placeholder="Gebruiker UID..." style="width:250px; display:inline-block; margin-right:10px;">
-                <input id="disabledReason" placeholder="Reden..." style="width:200px; display:inline-block; margin-right:10px;">
-                <button class="btn danger" onclick="addDisabled()">Toevoegen</button>
-            </div>
-            <div id="disabledList"></div>
-        </div>
-
-        <div class="card">
-            <h3>🗑️ Verwijderde Gebruikers</h3>
-            <div style="margin-bottom:15px;">
-                <input id="deletedUid" placeholder="Gebruiker UID..." style="width:250px; display:inline-block; margin-right:10px;">
-                <input id="deletedName" placeholder="Naam..." style="width:150px; display:inline-block; margin-right:10px;">
-                <input id="deletedReason" placeholder="Reden..." style="width:150px; display:inline-block; margin-right:10px;">
-                <button class="btn danger" onclick="addDeleted()">Toevoegen</button>
-            </div>
-            <div id="deletedList"></div>
-        </div>
-
-        <div class="card">
-            <h3>📅 Accounts Een Maand Niet Ingelogd</h3>
-            <div style="margin-bottom:15px;">
-                <input id="inactiveUid" placeholder="Gebruiker UID..." style="width:180px; display:inline-block; margin-right:10px;">
-                <input id="inactiveName" placeholder="Naam..." style="width:130px; display:inline-block; margin-right:10px;">
-                <input id="inactiveLastLogin" type="date" style="width:130px; display:inline-block; margin-right:10px;">
-                <input id="inactiveEndDate" type="date" style="width:130px; display:inline-block; margin-right:10px;">
-                <button class="btn primary" onclick="addInactive()">Toevoegen</button>
-            </div>
-            <div id="inactiveList"></div>
-        </div>
+        <div id="warningsList"></div>
     </div>
+
+    <div class="card">
+        <h3>🚫 Uitgeschakelde Gebruikers</h3>
+        <div style="margin-bottom:15px;">
+            <input id="disabledUid" placeholder="Gebruiker UID..." style="width:250px; display:inline-block; margin-right:10px;" oninput="autoFillName(this.value, 'disabledReason')"> 
+            <input id="disabledReason" placeholder="Reden..." style="width:200px; display:inline-block; margin-right:10px;">
+            <button class="btn danger" onclick="addDisabled()">Toevoegen</button>
+        </div>
+        <div id="disabledList"></div>
+    </div>
+
+    <div class="card">
+        <h3>🗑️ Verwijderde Gebruikers</h3>
+        <div style="margin-bottom:15px;">
+            <input id="deletedUid" placeholder="Gebruiker UID..." style="width:250px; display:inline-block; margin-right:10px;" oninput="autoFillName(this.value, 'deletedName')">
+            <input id="deletedName" placeholder="Naam..." style="width:150px; display:inline-block; margin-right:10px;">
+            <input id="deletedReason" placeholder="Reden..." style="width:150px; display:inline-block; margin-right:10px;">
+            <button class="btn danger" onclick="addDeleted()">Toevoegen</button>
+        </div>
+        <div id="deletedList"></div>
+    </div>
+
+    <div class="card">
+        <h3>📅 Accounts Een Maand Niet Ingelogd</h3>
+        <div style="margin-bottom:15px;">
+            <input id="inactiveUid" placeholder="Gebruiker UID..." style="width:180px; display:inline-block; margin-right:10px;" oninput="autoFillName(this.value, 'inactiveName')">
+            <input id="inactiveName" placeholder="Naam..." style="width:130px; display:inline-block; margin-right:10px;">
+            <input id="inactiveLastLogin" type="date" style="width:130px; display:inline-block; margin-right:10px;">
+            <input id="inactiveEndDate" type="date" style="width:130px; display:inline-block; margin-right:10px;">
+            <button class="btn primary" onclick="addInactive()">Toevoegen</button>
+        </div>
+        <div id="inactiveList"></div>
+    </div>
+</div>
                            </div>
             </div>
         </div>
@@ -1231,6 +1231,40 @@ function deleteTaskCategory(idx) {
         renderTaskCategorySelect();
         renderTaskCategoriesList();
     });
+}
+    // Functie om UID te kopiëren naar klembord
+function copyToClipboard(text) {
+    if (!navigator.clipboard) {
+        // Fallback voor oudere browsers
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+        notify("UID gekopieerd! (fallback)");
+        return;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+        notify("UID gekopieerd naar klembord!");
+    }).catch(err => {
+        console.error('Fout bij kopiëren: ', err);
+    });
+}
+
+// Functie om automatisch de naam in te vullen op basis van de UID
+function autoFillName(uid, targetInputId) {
+    const trimmedUid = uid.trim();
+    // De userNamesCache wordt gevuld in de functie loadUserNames()
+    const name = userNamesCache[trimmedUid];
+    
+    const targetInput = document.getElementById(targetInputId);
+    if (targetInput && name) {
+        targetInput.value = name;
+        // Geef een subtiele visuele hint dat de naam gevonden is
+        targetInput.style.backgroundColor = "rgba(34, 197, 94, 0.1)";
+        setTimeout(() => { targetInput.style.backgroundColor = ""; }, 1000);
+    }
 }
 </script>
 </body>

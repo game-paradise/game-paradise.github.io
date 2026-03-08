@@ -425,7 +425,7 @@ function renderUsers(users) {
     if(users.length === 0) { list.innerHTML = "<p>Geen gebruikers gevonden.</p>"; return; }
 
     users.forEach(u => {
-        // Controleer of 'name' bestaat en niet gelijk is aan "..."
+        // Naam bepalen: als het '...' is of leeg, dan Naamloos
         const name = (u.name && u.name !== "...") ? u.name : "Naamloos";
         const email = u.email || "Geen email";
         
@@ -433,12 +433,23 @@ function renderUsers(users) {
             <div class="user-item">
                 <div class="user-info">
                     <strong>${name}</strong>
-                    <small>${email} (UID: ${u.id})</small>
+                    <small>${email} (UID: ${u.id}) 
+                        <button class="btn" style="padding:2px 5px; font-size:10px; background:#334155; color:white; margin-left:5px;" 
+                                onclick="copyToClipboard('${u.id}')">📋 Kopieer UID</button>
+                    </small>
                 </div>
                 <button class="btn danger" onclick="deleteFullUser('${u.id}', '${name}')">🗑️ Verwijderen</button>
             </div>
         `;
     });
+}
+
+function autoFillName(uid, targetInputId) {
+    // We gebruiken de userNamesCache die al gevuld wordt bij het laden
+    const name = userNamesCache[uid];
+    if (name) {
+        document.getElementById(targetInputId).value = name;
+    }
 }
 
 function filterUsers() {

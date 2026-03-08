@@ -511,7 +511,7 @@
         
         <div class="chat-messages" id="chatMessages">
             <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; opacity:0.8;">
-                <img src="https://game-paradise.github.io/icon/favicon.png" style="width:100px; height:100px; margin-bottom:15px; border-radius:15px; box-shadow:0 0 20px rgba(37, 99, 235, 0.3);">
+                <img src="https://game-paradise.github.io/icon/favicon512x512" style="width:100px; height:100px; margin-bottom:15px; border-radius:15px; box-shadow:0 0 20px rgba(37, 99, 235, 0.3);">
                 <h2 style="color:white; margin:0 0 10px 0;">Game Paradise chat</h2>
                 <p style="color:#94a3b8; margin:0; max-width:80%;">Welkom bij Game Paradise chat hier kan je gratis unblocked chatten!</p>
             </div>
@@ -691,8 +691,8 @@ let editMessageId = null;
     if ("Notification" in window && Notification.permission === "granted") {
         const options = {
             body: text.length > 100 ? text.substring(0, 100) + '...' : text,
-            icon: 'icon/favicon.png',
-            badge: 'icon/favicon.png',
+            icon: '/icon/favicon512x512.png',
+            badge: '/icon/favicon512x512.png',
             tag: chatId,
             requireInteraction: false
         };

@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -664,6 +666,7 @@ let lastTypingUpdate = 0;
 let msgLimit = 50; 
 let observedUsers = new Set(); 
 let userCache = new Map(); // Cache voor avatar URL's
+let userNameCache = new Map(); // Cache voor actuele namen
 let hasLoadedChats = false;
 let sentRequestIds = new Set(); 
 let pinnedChats = []; 
@@ -978,7 +981,8 @@ function listenToUserUpdates(uid) {
             const newName = data.name;
             const newPic = data.pic || `https://ui-avatars.com/api/?name=${newName}`;
             
-            userCache.set(uid, newPic); // Update cache
+            userCache.set(uid, newPic); // Update avatar cache
+            userNameCache.set(uid, newName); // 🔴 NIEUW: Update naam cache
             
             document.querySelectorAll(`.user-name-${uid}`).forEach(el => el.innerText = newName);
             document.querySelectorAll(`.user-avatar-${uid}`).forEach(el => el.src = newPic);
@@ -1490,7 +1494,8 @@ function renderMessagesFromCache() {
             }
         }
 
-        const nameSpan = `<span class="sender user-name-${m.uid}">${m.user}</span>`;
+        const actueleNaam = userNameCache.get(m.uid) || m.user;
+const nameSpan = `<span class="sender user-name-${m.uid}">${actueleNaam}</span>`;
         let quotedBlock = "";
 
         if (m.replyTo) {

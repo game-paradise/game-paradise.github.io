@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -274,7 +275,11 @@
         .msg:hover .opts-btn { display: flex; }
 
         /* INPUT AREA */
-        .chat-input { padding: 15px; background: var(--card-bg); display: flex; flex-direction:column; gap:0; border-top: 1px solid #1e293b; flex-shrink: 0; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
+        .chat-input { 
+            padding: 15px; 
+            padding-bottom: 20px;
+            background: var(--card-bg); display: flex; flex-direction:column; gap:0; border-top: 1px solid #1e293b; flex-shrink: 0; 
+        }
         
         #replyPreview {
             display: none; background: #1e293b; padding: 8px 15px; border-left: 4px solid var(--accent);
@@ -372,7 +377,6 @@
             }
             .chat-input {
                 flex-shrink: 0;
-                padding-bottom: max(15px, env(safe-area-inset-bottom));
             }
         }
         
@@ -508,7 +512,7 @@
         
         <div class="chat-messages" id="chatMessages">
             <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; opacity:0.8;">
-                <img src="https://game-paradise.github.io/icon/favicon.png" style="width:100px; height:100px; margin-bottom:15px; border-radius:15px; box-shadow:0 0 20px rgba(37, 99, 235, 0.3);">
+                <img src="https://game-paradise.github.io/icon/favicon512x512.png" style="width:100px; height:100px; margin-bottom:15px; border-radius:15px; box-shadow:0 0 20px rgba(37, 99, 235, 0.3);">
                 <h2 style="color:white; margin:0 0 10px 0;">Game Paradise chat</h2>
                 <p style="color:#94a3b8; margin:0; max-width:80%;">Welkom bij Game Paradise chat hier kan je gratis unblocked chatten!</p>
             </div>
@@ -661,6 +665,7 @@ let lastTypingUpdate = 0;
 let msgLimit = 50; 
 let observedUsers = new Set(); 
 let userCache = new Map(); // Cache voor avatar URL's
+let userNameCache = new Map(); // Cache voor actuele namen
 let hasLoadedChats = false;
 let sentRequestIds = new Set(); 
 let pinnedChats = []; 
@@ -688,8 +693,8 @@ let editMessageId = null;
     if ("Notification" in window && Notification.permission === "granted") {
         const options = {
             body: text.length > 100 ? text.substring(0, 100) + '...' : text,
-            icon: 'icon/favicon.png',
-            badge: 'icon/favicon.png',
+            icon: '/icon/favicon512x512.png',
+            badge: '/icon/favicon512x512.png',
             tag: chatId,
             requireInteraction: false
         };
@@ -975,7 +980,8 @@ function listenToUserUpdates(uid) {
             const newName = data.name;
             const newPic = data.pic || `https://ui-avatars.com/api/?name=${newName}`;
             
-            userCache.set(uid, newPic); // Update cache
+            userCache.set(uid, newPic); // Update avatar cache
+            userNameCache.set(uid, newName); // 🔴 NIEUW: Update naam cache
             
             document.querySelectorAll(`.user-name-${uid}`).forEach(el => el.innerText = newName);
             document.querySelectorAll(`.user-avatar-${uid}`).forEach(el => el.src = newPic);
@@ -1487,7 +1493,8 @@ function renderMessagesFromCache() {
             }
         }
 
-        const nameSpan = `<span class="sender user-name-${m.uid}">${m.user}</span>`;
+        const actueleNaam = userNameCache.get(m.uid) || m.user;
+const nameSpan = `<span class="sender user-name-${m.uid}">${actueleNaam}</span>`;
         let quotedBlock = "";
 
         if (m.replyTo) {
@@ -2411,5 +2418,54 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <script>var d=document,w="https://tally.so/widgets/embed.js",v=function(){"undefined"!=typeof Tally?Tally.loadEmbeds():d.querySelectorAll("iframe[data-tally-src]:not([src])").forEach((function(e){e.src=e.dataset.tallySrc}))};if("undefined"!=typeof Tally)v();else if(d.querySelector('script[src="'+w+'"]')==null){var s=d.createElement("script");s.src=w,s.onload=v,s.onerror=v,d.body.appendChild(s);}</script>
+
+<script>
+(function() {
+    let debounceTimer = null;
+    
+    function applyBottomPadding() {
+        const chatInput = document.querySelector('.chat-input');
+        if (!chatInput) return;
+        
+        // Reset padding first to avoid stacking
+        chatInput.style.paddingBottom = '';
+        
+        // Check if running on Android or iOS (PWA in standalone mode)
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+        
+        if (!isStandalone && !/android/i.test(navigator.userAgent) && !/iPhone|iPad|iPod/i.test(navigator.userAgent)) return;
+        
+        // Get the difference - this is the navigation bar / notch height
+        const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        const diff = window.innerHeight - viewportHeight;
+        
+        // Minimum padding for safe area
+        let extraPadding = 15;
+        
+        // Add navigation bar height if present
+        if (diff > 0) {
+            extraPadding += diff;
+        }
+        
+        // Apply the calculated padding
+        chatInput.style.paddingBottom = extraPadding + 'px';
+    }
+
+    function debouncedApply() {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(applyBottomPadding, 100);
+    }
+
+    // Apply on load and after a short delay to ensure DOM is ready
+    setTimeout(applyBottomPadding, 200);
+    
+    // Re-apply when viewport changes
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', debouncedApply);
+    }
+    window.addEventListener('resize', debouncedApply);
+    window.addEventListener('load', applyBottomPadding);
+})();
+</script>
 </body>
 </html>

@@ -543,12 +543,28 @@ async function editUserName(uid, currentName) {
         if (!chatSnap.empty) {
             const batch = db.batch();
             chatSnap.forEach(doc => {
-                // Let op: als het veld in jouw database anders heet (bijv. 'author' of 'userName'), verander 'name' dan hieronder.
                 batch.update(doc.ref, { name: trimmedName }); 
             });
             await batch.commit();
         }
-        
+
+        // 3. Update onze lokale cache en gebruikerslijst zodat je niet hoeft te herladen
+        userNamesCache[uid] = trimmedName;
+        const userIndex = allUsers.findIndex(u => u.id === uid);
+        if (userIndex !== -1) {
+            allUsers[userIndex].name = trimmedName;
+        }
+
+        // Herlaad de visuele lijst
+        renderUsers(allUsers);
+        notify(`✅ Naam succesvol gewijzigd naar ${trimmedName}!`);
+
+    } catch (error) {
+        console.error(error);
+        alert("Fout bij het wijzigen van de naam: " + error.message);
+    }
+}
+
 async function resetUserProfilePic(uid) {
     const defaultPic = "https://i.imgur.com/csEQzKG.png";
     

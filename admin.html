@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -482,20 +481,30 @@ function renderUsers(users) {
     list.innerHTML = "";
     if(users.length === 0) { list.innerHTML = "<p>Geen gebruikers gevonden.</p>"; return; }
 
+    const defaultPic = "https://i.imgur.com/csEQzKG.png";
+
     users.forEach(u => {
         const name = (u.name && u.name !== "...") ? u.name : "Naamloos";
         const email = u.email || "Geen email";
+        const pic = u.pic || defaultPic; // Gebruik opgeslagen pic of de standaard
         
         list.innerHTML += `
             <div class="user-item">
-                <div class="user-info">
-                    <strong>${name}</strong>
-                    <small>${email} (UID: ${u.id}) 
-    <button class="btn" style="padding:2px 5px; font-size:10px; background:#334155; color:white; margin-left:5px;" 
-            onclick="copyToClipboard('${u.id}')">📋 Kopieer UID</button>
-    <button class="btn warning" style="padding:2px 5px; font-size:10px; color:black; margin-left:5px;" 
-            onclick="editUserName('${u.id}', '${name}')">✏️ Naam aanpassen</button>
-</small>
+                <div style="display:flex; align-items:center; gap:15px;">
+                    <img src="${pic}" class="thumb" style="border-radius: 50%; border: 2px solid #334155; width: 50px; height: 50px;">
+                    <div class="user-info">
+                        <strong>${name}</strong>
+                        <small>${email} (UID: ${u.id}) 
+                            <div style="margin-top: 5px; display: flex; gap: 5px;">
+                                <button class="btn" style="padding:2px 8px; font-size:11px; background:#334155; color:white;" 
+                                        onclick="copyToClipboard('${u.id}')">📋 UID</button>
+                                <button class="btn warning" style="padding:2px 8px; font-size:11px; color:black;" 
+                                        onclick="editUserName('${u.id}', '${name}')">✏️ Naam</button>
+                                <button class="btn" style="padding:2px 8px; font-size:11px; background:#475569; color:white;" 
+                                        onclick="resetUserProfilePic('${u.id}')">📷 Reset Foto</button>
+                            </div>
+                        </small>
+                    </div>
                 </div>
                 <button class="btn danger" onclick="deleteFullUser('${u.id}', '${name}')">🗑️ Verwijderen</button>
             </div>
@@ -533,7 +542,6 @@ async function editUserName(uid, currentName) {
         if (!chatSnap.empty) {
             const batch = db.batch();
             chatSnap.forEach(doc => {
-                // Let op: als het veld in jouw database anders heet (bijv. 'author' of 'userName'), verander 'name' dan hieronder.
                 batch.update(doc.ref, { name: trimmedName }); 
             });
             await batch.commit();
@@ -555,6 +563,32 @@ async function editUserName(uid, currentName) {
         alert("Fout bij het wijzigen van de naam: " + error.message);
     }
 }
+
+async function resetUserProfilePic(uid) {
+    const defaultPic = "https://i.imgur.com/csEQzKG.png";
+    
+    if(!confirm("Weet je zeker dat je de profielfoto van deze gebruiker wilt resetten naar de standaard afbeelding?")) return;
+
+    try {
+        await db.collection("users").doc(uid).update({ 
+            pic: defaultPic 
+        });
+        
+        notify("✅ Profielfoto succesvol gereset!");
+        
+        // Ververs de lijst lokaal zodat de foto direct verandert
+        const userIndex = allUsers.findIndex(u => u.id === uid);
+        if (userIndex !== -1) {
+            allUsers[userIndex].pic = defaultPic;
+        }
+        renderUsers(allUsers);
+        
+    } catch (error) {
+        console.error("Fout bij resetten foto:", error);
+        alert("Kon de foto niet resetten: " + error.message);
+    }
+}
+
 async function deleteFullUser(uid, name) {
     if(!confirm(`⚠️ WEET JE HET ZEKER?\n\nJe staat op het punt alle data van ${name} te verwijderen.\nDit verwijdert:\n- Profiel\n- Vrienden (ook bij anderen)\n- Alle privé chats\n- Savegames\n\nDit kan niet ongedaan gemaakt worden.`)) return;
     

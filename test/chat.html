@@ -1452,6 +1452,73 @@ async function openChat(id, name, pic, type) {
 
     showChatSkeletons(); 
     setupChatListeners();
+
+    // Verwijder berichten ouder dan 30 dagen op de achtergrond
+    cleanupOldMessages(id, type);
+}
+
+/**
+ * Verwijdert automatisch berichten ouder dan 30 dagen wanneer een chat wordt geopend.
+ * Werkt voor alle chat-types: global, group en private.
+ * Gebruikt een write batch voor efficiënte verwijdering (max 500 per batch).
+ *
+ * @param {string} chatId  - Het ID van de geopende chat
+ * @param {string} type    - Het type chat: 'global', 'group', of 'private'
+ */
+async function cleanupOldMessages(chatId, type) {
+    try {
+        // Bepaal de cutoff-datum (huidige datum min 30 dagen)
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 30);
+        const cutoffTimestamp = firebase.firestore.Timestamp.fromDate(cutoff);
+
+        // Bepaal het juiste Firestore-pad op basis van het chat-type
+        let ref;
+        if (type === 'global') {
+            ref = db.collection("chats");
+        } else if (type === 'group') {
+            ref = db.collection("groups").doc(chatId).collection("messages");
+        } else {
+            // private chat: document-ID is de gesorteerde combinatie van beide uid's
+            ref = db.collection("private_chats")
+                     .doc([user.uid, chatId].sort().join("_"))
+                     .collection("messages");
+        }
+
+        // Zoek alle berichten met een timestamp ouder dan de cutoff
+        const snapshot = await ref
+            .where("timestamp", "<", cutoffTimestamp)
+            .get();
+
+        // Niets te doen als er geen oude berichten zijn
+        if (snapshot.empty) return;
+
+        // Verwijder in batches van max 500 (Firestore-limiet)
+        const BATCH_SIZE = 500;
+        let batch = db.batch();
+        let count = 0;
+
+        for (const doc of snapshot.docs) {
+            batch.delete(doc.ref);
+            count++;
+
+            if (count === BATCH_SIZE) {
+                await batch.commit();
+                batch = db.batch();
+                count = 0;
+            }
+        }
+
+        // Commit de resterende documenten (als count > 0)
+        if (count > 0) {
+            await batch.commit();
+        }
+
+        console.log(`[Cleanup] ${snapshot.size} bericht(en) ouder dan 30 dagen verwijderd uit chat: ${chatId}`);
+    } catch (err) {
+        // Stille fout: cleanup mislukt mag de chat-ervaring niet verstoren
+        console.warn("[Cleanup] Kon oude berichten niet verwijderen:", err);
+    }
 }
 
 function setupChatListeners() {

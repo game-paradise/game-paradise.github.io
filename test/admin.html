@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -589,22 +588,7 @@ async function resetUserProfilePic(uid) {
         alert("Kon de foto niet resetten: " + error.message);
     }
 }
-        // 3. Update onze lokale cache en gebruikerslijst zodat je niet hoeft te herladen
-        userNamesCache[uid] = trimmedName;
-        const userIndex = allUsers.findIndex(u => u.id === uid);
-        if (userIndex !== -1) {
-            allUsers[userIndex].name = trimmedName;
-        }
 
-        // Herlaad de visuele lijst
-        renderUsers(allUsers);
-        notify(`✅ Naam succesvol gewijzigd naar ${trimmedName}!`);
-
-    } catch (error) {
-        console.error(error);
-        alert("Fout bij het wijzigen van de naam: " + error.message);
-    }
-}
 async function deleteFullUser(uid, name) {
     if(!confirm(`⚠️ WEET JE HET ZEKER?\n\nJe staat op het punt alle data van ${name} te verwijderen.\nDit verwijdert:\n- Profiel\n- Vrienden (ook bij anderen)\n- Alle privé chats\n- Savegames\n\nDit kan niet ongedaan gemaakt worden.`)) return;
     

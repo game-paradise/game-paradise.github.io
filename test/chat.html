@@ -642,7 +642,22 @@ async function loadBannedWords() {
         console.log("Kon gebanned words niet laden:", e);
     }
 }
-
+    
+function previewImage(input, previewId) {
+    const preview = document.getElementById(previewId);
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        
+        reader.onload = function(e) {
+            preview.src = e.target.result;
+            // Sla de base64 string op in de globale variabele voor later gebruik (bijv. opslaan)
+            currentBase64 = e.target.result; 
+        }
+        
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+    
 function checkProfanity(text) { 
     if(!text) return false; 
     const allBadWords = [...badWords, ...firebaseBannedWords];

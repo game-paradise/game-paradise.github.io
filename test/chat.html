@@ -207,8 +207,16 @@
     overflow: hidden;
 }
         .chat-header { padding: 10px 20px; background: var(--card-bg); display: flex; align-items: center; border-bottom: 1px solid #1e293b; height: 65px; gap: 10px; flex-shrink: 0; }
-        .chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-        
+      .chat-messages {
+    flex: 1; 
+    overflow-y: auto; 
+    padding: 20px; 
+    display: flex; 
+    flex-direction: column; 
+    gap: 8px; 
+    min-height: 0;
+    scroll-behavior: smooth; /* VOEG DEZE TOE */
+}
         /* Message & Avatar Layout */
         .msg-container {
             display: flex;
@@ -736,6 +744,7 @@ let pinnedChats = [];
 let readStatus = new Map(); // Unread status from Firestore
 let readStatusLoaded = false;
 let lastNotifiedMsgId = new Map(); // Track last notified message ID per chat
+let isUserScrollingUp = false;
 
 // Reply & Edit State
 let replyContext = null; 
@@ -1436,7 +1445,21 @@ async function openChat(id, name, pic, type) {
     document.getElementById('inputArea').style.display = "flex";
     document.getElementById('settingsBtn').style.display = type === 'global' ? 'none' : 'block';
     
-    document.getElementById('chatMessages').onscroll = checkScroll;
+    // Vervang je huidige checkScroll logica met deze functie
+function checkScroll() {
+    const box = document.getElementById('chatMessages');
+    
+    // Bereken de afstand tot de bodem
+    const distanceToBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
+    
+    // Als de gebruiker meer dan 100px naar boven is gescrold, markeer als 'scrolling up'
+    isUserScrollingUp = distanceToBottom > 100;
+
+    // Logica voor het inladen van oude berichten (bestond al)
+    if (box.scrollTop === 0 && window.currentSnap && window.currentSnap.size >= msgLimit) { 
+        loadMoreMessages(); 
+    }
+}
     
     const statusEl = document.getElementById('activeStatus');
     if(type === 'private' && chatDataMap.has(id)) {
@@ -1600,9 +1623,13 @@ function loadMoreMessages() {
 function renderMessagesFromCache() {
     if(!window.currentSnap) return;
     const box = document.getElementById('chatMessages');
-    const isAtBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 100;
     
-    box.innerHTML = "";
+    // Onthoud of we auto-scroll moeten toepassen VOORDAT we de DOM updaten
+    // Forceer auto-scroll als dit de allereerste lading is (msgLimit === 50) of als we NIET naar boven scrollen
+    const shouldAutoScroll = (msgLimit === 50 && box.innerHTML === "") || !isUserScrollingUp;
+    
+    // Bouw de HTML op in een string om DOM reflows (haperingen) te voorkomen
+    let htmlStr = "";
     let lastDateStr = "";
 
     window.currentSnap.forEach(doc => {
@@ -1619,10 +1646,66 @@ function renderMessagesFromCache() {
             timeStr = date.getHours().toString().padStart(2,'0') + ":" + date.getMinutes().toString().padStart(2,'0');
             const dateHeader = getFormattedDate(date);
             if(dateHeader !== lastDateStr) {
-                box.innerHTML += `<div class="date-divider"><span>${dateHeader}</span></div>`;
+                htmlStr += `<div class="date-divider"><span>${dateHeader}</span></div>`;
                 lastDateStr = dateHeader;
             }
         }
+
+        const actueleNaam = userNameCache.get(m.uid) || m.user;
+        const nameSpan = `<span class="sender user-name-${m.uid}">${actueleNaam}</span>`;
+        let quotedBlock = "";
+
+        if (m.replyTo) {
+            quotedBlock = `
+            <div class="quoted-msg" onclick="scrollToMessage('${m.replyTo.id}')">
+                <span class="quoted-user">${m.replyTo.user}</span>
+                <span class="quoted-text">${m.replyTo.text}</span>
+            </div>`;
+        }
+
+        if (m.type === 'system') {
+            htmlStr += `<div class="msg system">${m.text}</div>`;
+            return; 
+        }
+        
+        if (m.image) {
+            content = `${nameSpan}${quotedBlock}<img class="msg-img-content" src="${m.image}" onclick="openImage('${m.image}')">`;
+        } else {
+            content = `${nameSpan}${quotedBlock}${linkify(m.text)}`;
+        }
+        
+        const safeText = m.text ? encodeURIComponent(m.text) : "";
+        const safeUser = m.user ? m.user.replace(/'/g, "\\'") : "User";
+        const optsBtn = `<div class="opts-btn" title="Opties" onclick="handleContextMenu(event, '${doc.id}', '${m.uid}', '${safeUser}', '${safeText}')">•••</div>`;
+        const contextAttr = `oncontextmenu="handleContextMenu(event, '${doc.id}', '${m.uid}', '${safeUser}', '${safeText}')"`;
+
+        let editedSpan = m.edited ? `<span class="msg-edited">(bewerkt)</span>` : "";
+        let footerHtml = `<div class="msg-footer">${editedSpan}<span class="msg-time">${timeStr}</span></div>`;
+
+        let avatarHtml = "";
+        if (!isMe && (chatType === 'group' || chatType === 'global')) {
+            let avatarSrc = userCache.get(m.uid) || `https://ui-avatars.com/api/?name=${m.user}`;
+            avatarHtml = `<img src="${avatarSrc}" class="msg-avatar user-avatar-${m.uid}">`;
+        }
+
+        // Voeg toe aan de opgebouwde string, NIET direct aan de DOM
+        htmlStr += `
+        <div class="msg-container ${className}">
+            ${avatarHtml}
+            <div class="msg ${className}" id="msg-${doc.id}" ${contextAttr}>
+                ${optsBtn}${content}${footerHtml}
+            </div>
+        </div>`;
+    });
+
+    // Één enkele grote DOM update! Dit is véél sneller.
+    box.innerHTML = htmlStr;
+
+    // Pas smart scroll toe
+    if (shouldAutoScroll) {
+        box.scrollTop = box.scrollHeight;
+    }
+}
 
         const actueleNaam = userNameCache.get(m.uid) || m.user;
 const nameSpan = `<span class="sender user-name-${m.uid}">${actueleNaam}</span>`;
@@ -1794,8 +1877,12 @@ function cancelReplyOrEdit() {
 
 function scrollToMessage(id) {
     const el = document.getElementById(`msg-${id}`);
+    const box = document.getElementById('chatMessages');
     if(el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Bereken de positie relatief ten opzichte van de container
+        const targetScroll = el.offsetTop - (box.clientHeight / 2);
+        box.scrollTop = targetScroll; // CSS scroll-behavior pakt dit vloeiend op!
+        
         el.style.background = "#2563eb66";
         setTimeout(() => el.style.background = "", 1000);
     } else {

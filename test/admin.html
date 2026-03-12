@@ -590,46 +590,70 @@ async function resetUserProfilePic(uid) {
 }
 
 async function deleteFullUser(uid, name) {
-    if(!confirm(`⚠️ WEET JE HET ZEKER?\n\nJe staat op het punt alle data van ${name} te verwijderen.\nDit verwijdert:\n- Profiel-informatie\n- Vriendschappen bij anderen\n- Alle privé chats (/private_chats/)\n- Alle eigen subcollecties (vrienden, savegames, etc.)\n\nDit kan niet ongedaan gemaakt worden.`)) return;
+    if(!confirm(`⚠️ VOLLEDIGE VERWIJDERING\n\nDit wist alle sporen van ${name}, inclusief chats en subcollecties.\n\nWeet je het zeker?`)) return;
     
-    notify("Bezig met verwijderen... dit kan even duren.");
+    notify("Bezig met grondige schoonmaak...");
     
     try {
         const userRef = db.collection("users").doc(uid);
-        const cleanupBatch = db.batch();
 
-        // 1. Verwijder de gebruiker uit de lijst van anderen: /users/vriend_id/friends/jouw_uid
+        // 1. Verwijder de gebruiker uit de vriendenlijst van anderen
         const friendsSnapshot = await userRef.collection("friends").get();
+        const friendBatch = db.batch();
         friendsSnapshot.forEach(doc => {
-            const friendId = doc.id; // Dit is de ID van de vriend
-            // Verwijder 'jouw_uid' uit de collectie van de vriend
+            const friendId = doc.id;
             const otherSideRef = db.collection("users").doc(friendId).collection("friends").doc(uid);
-            cleanupBatch.delete(otherSideRef);
+            friendBatch.delete(otherSideRef);
         });
+        if (!friendsSnapshot.empty) await friendBatch.commit();
 
-        // 2. Verwijder alle privé chats waar dit UID onderdeel van is
-        // We scannen de private_chats collectie op document-ID's die jouw UID bevatten
+        // 2. Verwijder Privé Chats EN hun subcollecties (berichten)
         const privateChatsSnap = await db.collection("private_chats").get();
-        privateChatsSnap.forEach(doc => {
+        for (const doc of privateChatsSnap.docs) {
             if (doc.id.includes(uid)) {
-                cleanupBatch.delete(doc.ref);
+                // Verwijder eerst alle berichten in de chat (subcollectie 'messages')
+                const msgs = await doc.ref.collection("messages").get();
+                if (!msgs.empty) {
+                    const msgBatch = db.batch();
+                    msgs.forEach(mDoc => msgBatch.delete(mDoc.ref));
+                    await msgBatch.commit();
+                }
+                // Verwijder nu het chat-document zelf
+                await doc.ref.delete();
             }
-        });
+        }
 
-        // Voer de eerste batch uit (vrienden-links en chats)
-        await cleanupBatch.commit();
-
-        // 3. Verwijder alle eigen subcollecties van de gebruiker (inclusief /users/uid/friends)
-        const subCollections = ["favorites", "saveData", "friends", "requests", "sentRequests"];
-        for (const sub of subCollections) {
-            const snapshot = await userRef.collection(sub).get();
-            if (!snapshot.empty) {
+        // 3. Verwijder ALLE subcollecties van de gebruiker
+        // Voeg hier alle subcollectie-namen toe die je gebruikt
+        const subs = ["favorites", "saveData", "friends", "requests", "sentRequests", "notifications"];
+        for (const subName of subs) {
+            const subSnap = await userRef.collection(subName).get();
+            if (!subSnap.empty) {
                 const subBatch = db.batch();
-                snapshot.forEach(doc => subBatch.delete(doc.ref));
+                subSnap.forEach(sDoc => subBatch.delete(sDoc.ref));
                 await subBatch.commit();
             }
         }
 
+        // 4. Verwijder publieke chats
+        const chatSnap = await db.collection("chats").where("uid", "==", uid).get();
+        if (!chatSnap.empty) {
+            const chatBatch = db.batch();
+            chatSnap.forEach(cDoc => chatBatch.delete(cDoc.ref));
+            await chatBatch.commit();
+        }
+
+        // 5. Verwijder het hoofd-document van de gebruiker (/users/UID)
+        await userRef.delete();
+        
+        notify(`✅ Gebruiker ${name} is nu 100% verwijderd uit de database.`);
+        loadUsers();
+        
+    } catch (error) {
+        console.error("Fout bij harde delete:", error);
+        alert("Fout: " + error.message);
+    }
+}
         // 4. Verwijder publieke chats van deze gebruiker
         const chatSnap = await db.collection("chats").where("uid", "==", uid).get();
         if (!chatSnap.empty) {

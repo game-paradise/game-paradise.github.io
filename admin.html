@@ -497,11 +497,11 @@ function renderUsers(users) {
                         <small>${email} (UID: ${u.id}) 
                             <div style="margin-top: 5px; display: flex; gap: 5px;">
                                 <button class="btn" style="padding:2px 8px; font-size:11px; background:#334155; color:white;" 
-                                        onclick="copyToClipboard('${u.id}')">📋 UID</button>
+                                        onclick="copyToClipboard('${u.id}')">📋 Kopieer UID</button>
                                 <button class="btn warning" style="padding:2px 8px; font-size:11px; color:black;" 
-                                        onclick="editUserName('${u.id}', '${name}')">✏️ Naam</button>
+                                        onclick="editUserName('${u.id}', '${name}')">✏️ verander naam</button>
                                 <button class="btn" style="padding:2px 8px; font-size:11px; background:#475569; color:white;" 
-                                        onclick="resetUserProfilePic('${u.id}')">📷 Reset Foto</button>
+                                        onclick="resetUserProfilePic('${u.id}')">📷 Reset foto</button>
                             </div>
                         </small>
                     </div>

@@ -590,7 +590,7 @@ async function resetUserProfilePic(uid) {
 }
 
 async function deleteFullUser(uid, name) {
-    if(!confirm(`⚠️ VOLLEDIGE VERWIJDERING\n\nDit wist alle sporen van ${name}, inclusief chats en subcollecties.\n\nWeet je het zeker?`)) return;
+    if(!confirm(`⚠️ VOLLEDIGE VERWIJDERING\n\nDit wist alle data van ${name}, inclusief alle privé chats en submappen.\n\nWeet je het zeker?`)) return;
     
     notify("Bezig met grondige schoonmaak...");
     
@@ -599,32 +599,34 @@ async function deleteFullUser(uid, name) {
 
         // 1. Verwijder de gebruiker uit de vriendenlijst van anderen
         const friendsSnapshot = await userRef.collection("friends").get();
-        const friendBatch = db.batch();
-        friendsSnapshot.forEach(doc => {
-            const friendId = doc.id;
-            const otherSideRef = db.collection("users").doc(friendId).collection("friends").doc(uid);
-            friendBatch.delete(otherSideRef);
-        });
-        if (!friendsSnapshot.empty) await friendBatch.commit();
+        if (!friendsSnapshot.empty) {
+            const friendBatch = db.batch();
+            friendsSnapshot.forEach(doc => {
+                const friendId = doc.id;
+                const otherSideRef = db.collection("users").doc(friendId).collection("friends").doc(uid);
+                friendBatch.delete(otherSideRef);
+            });
+            await friendBatch.commit();
+        }
 
-        // 2. Verwijder Privé Chats EN hun subcollecties (berichten)
+        // 2. Verwijder Privé Chats EN hun berichten-subcollecties
         const privateChatsSnap = await db.collection("private_chats").get();
-        for (const doc of privateChatsSnap.docs) {
-            if (doc.id.includes(uid)) {
-                // Verwijder eerst alle berichten in de chat (subcollectie 'messages')
-                const msgs = await doc.ref.collection("messages").get();
+        // Gebruik een for...of loop in plaats van .forEach voor await
+        for (const chatDoc of privateChatsSnap.docs) {
+            if (chatDoc.id.includes(uid)) {
+                // Verwijder alle berichten in deze specifieke chat
+                const msgs = await chatDoc.ref.collection("messages").get();
                 if (!msgs.empty) {
                     const msgBatch = db.batch();
                     msgs.forEach(mDoc => msgBatch.delete(mDoc.ref));
                     await msgBatch.commit();
                 }
-                // Verwijder nu het chat-document zelf
-                await doc.ref.delete();
+                // Nu het chat-document zelf verwijderen
+                await chatDoc.ref.delete();
             }
         }
 
-        // 3. Verwijder ALLE subcollecties van de gebruiker
-        // Voeg hier alle subcollectie-namen toe die je gebruikt
+        // 3. Verwijder alle eigen subcollecties van de gebruiker
         const subs = ["favorites", "saveData", "friends", "requests", "sentRequests", "notifications"];
         for (const subName of subs) {
             const subSnap = await userRef.collection(subName).get();
@@ -646,43 +648,15 @@ async function deleteFullUser(uid, name) {
         // 5. Verwijder het hoofd-document van de gebruiker (/users/UID)
         await userRef.delete();
         
-        notify(`✅ Gebruiker ${name} is nu 100% verwijderd uit de database.`);
+        notify(`✅ Gebruiker ${name} is volledig gewist.`);
         loadUsers();
         
     } catch (error) {
         console.error("Fout bij harde delete:", error);
-        alert("Fout: " + error.message);
+        alert("Er ging iets mis: " + error.message);
     }
 }
-        // 4. Verwijder publieke chats van deze gebruiker
-        const chatSnap = await db.collection("chats").where("uid", "==", uid).get();
-        if (!chatSnap.empty) {
-            const chatBatch = db.batch();
-            chatSnap.forEach(doc => chatBatch.delete(doc.ref));
-            await chatBatch.commit();
-        }
-
-        // 5. Verwijder het profiel-document zelf
-        await userRef.delete();
-        
-        notify(`✅ Alle data (inclusief vriendschappen en privé-chats) van ${name} is verwijderd!`);
-        loadUsers();
-        
-    } catch (error) {
-        console.error(error);
-        alert("Fout bij verwijderen: " + error.message);
-    }
-}
-// --- GAMES EN OVERIGE FUNCTIES ---
-function filterGamesTable() {
-    const term = document.getElementById('gameSearch').value.toLowerCase();
-    const rows = document.querySelectorAll('.game-row');
-    rows.forEach(row => {
-        const title = row.querySelector('.game-title-cell').innerText.toLowerCase();
-        row.style.display = title.includes(term) ? '' : 'none';
-    });
-}
-
+    
 function saveGame() {
     const id = document.getElementById('editId').value;
     if(!id) return notify("ID is verplicht!");

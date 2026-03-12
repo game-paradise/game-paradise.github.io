@@ -590,7 +590,7 @@ async function resetUserProfilePic(uid) {
 }
 
 async function deleteFullUser(uid, name) {
-    if(!confirm(`⚠️ VOLLEDIGE VERWIJDERING\n\nDit wist alle data van ${name}, inclusief alle privé chats en submappen.\n\nWeet je het zeker?`)) return;
+    if(!confirm(`⚠️ WEET JE HET ZEKER?\n\nDit wist alle data van ${name}, inclusief alle privé chats en submappen.\n\nDit kan niet ongedaan gemaakt worden.`)) return;
     
     notify("Bezig met grondige schoonmaak...");
     
@@ -611,10 +611,9 @@ async function deleteFullUser(uid, name) {
 
         // 2. Verwijder Privé Chats EN hun berichten-subcollecties
         const privateChatsSnap = await db.collection("private_chats").get();
-        // Gebruik een for...of loop in plaats van .forEach voor await
         for (const chatDoc of privateChatsSnap.docs) {
             if (chatDoc.id.includes(uid)) {
-                // Verwijder alle berichten in deze specifieke chat
+                // Verwijder alle berichten in deze specifieke chat eerst
                 const msgs = await chatDoc.ref.collection("messages").get();
                 if (!msgs.empty) {
                     const msgBatch = db.batch();
@@ -626,8 +625,8 @@ async function deleteFullUser(uid, name) {
             }
         }
 
-        // 3. Verwijder alle eigen subcollecties van de gebruiker
-        const subs = ["favorites", "saveData", "friends", "requests", "sentRequests", "notifications"];
+        // 3. Verwijder alle subcollecties van de gebruiker zelf
+        const subs = ["favorites", "saveData", "friends", "requests", "sentRequests", "readStatus"];
         for (const subName of subs) {
             const subSnap = await userRef.collection(subName).get();
             if (!subSnap.empty) {
@@ -637,22 +636,14 @@ async function deleteFullUser(uid, name) {
             }
         }
 
-        // 4. Verwijder publieke chats
-        const chatSnap = await db.collection("chats").where("uid", "==", uid).get();
-        if (!chatSnap.empty) {
-            const chatBatch = db.batch();
-            chatSnap.forEach(cDoc => chatBatch.delete(cDoc.ref));
-            await chatBatch.commit();
-        }
-
-        // 5. Verwijder het hoofd-document van de gebruiker (/users/UID)
+        // 4. Verwijder het hoofd-document (/users/UID)
         await userRef.delete();
         
-        notify(`✅ Gebruiker ${name} is volledig gewist.`);
+        notify(`✅ Gebruiker ${name} is volledig verwijderd.`);
         loadUsers();
         
     } catch (error) {
-        console.error("Fout bij harde delete:", error);
+        console.error("Fout bij delete:", error);
         alert("Er ging iets mis: " + error.message);
     }
 }

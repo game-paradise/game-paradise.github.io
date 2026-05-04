@@ -25,22 +25,6 @@
         });
       }
     </script>
-<script>
-  // Dit zorgt ervoor dat de browser de app-bestanden registreert
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js')
-        .then(reg => console.log('Service Worker geregistreerd!', reg))
-        .catch(err => console.error('Service Worker mislukt:', err));
-    });
-  }
-</script>
-    
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     
     <style>
         :root {
@@ -661,19 +645,6 @@ function checkProfanity(text) {
     const allBadWords = [...badWords, ...firebaseBannedWords];
     return allBadWords.some(word => text.toLowerCase().includes(word)); 
 }
-// Functie om de gekozen afbeelding direct te tonen (preview)
-function previewImage(input, previewId) {
-    const preview = document.getElementById(previewId);
-    if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            preview.src = e.target.result;
-            currentBase64 = e.target.result; // Slaat de foto op in het geheugen
-        };
-        reader.readAsDataURL(input.files[0]);
-    }
-}
-
 // Functie die wordt uitgevoerd als je op 'Start ➤' klikt
 async function completeSetup() {
     const name = document.getElementById('setupName').value.trim();
@@ -742,15 +713,13 @@ let replyContext = null;
 let editMessageId = null; 
 
     function showDesktopNotification(sender, text, chatId) {
-    // Skip if tab is visible AND this is the active chat
-    if (!document.hidden && activeChatId === chatId) {
+    // Nooit notificeren als het tabblad zichtbaar en in focus is
+    if (!document.hidden && document.hasFocus()) {
         return;
     }
     
-    // Skip if another tab was recently active with this chat
-    const globalActiveChat = localStorage.getItem('currentActiveChat');
-    const lastActivity = parseInt(localStorage.getItem('lastActivity') || '0');
-    if (!document.hidden && (Date.now() - lastActivity) < 5000 && globalActiveChat === chatId) {
+    // Skip als dit de actieve chat is én het tabblad zichtbaar is
+    if (!document.hidden && activeChatId === chatId) {
         return;
     }
 
@@ -864,12 +833,6 @@ function updatePresence(status) {
             console.warn("Kon status niet opslaan:", err);
         });
     }
-}
-function updatePresence(status) { 
-    if(user) db.collection("users").doc(user.uid).update({ 
-        status: status, 
-        lastSeen: firebase.firestore.FieldValue.serverTimestamp() 
-    }); 
 }
 
 async function checkSetup() {
@@ -1412,17 +1375,18 @@ async function openChat(id, name, pic, type) {
     toggleSidebar(false);
     activeChatId = id; chatType = type;
     msgLimit = 50; 
-    window.chatHasRenderedOnce = false;
-    window.currentSnap = null;
-    userScrolledAway = false;
     
+    // Update global active chat in localStorage (for multi-tab support)
     localStorage.setItem('currentActiveChat', id);
     localStorage.setItem('lastActivity', Date.now());
     
+    // Reset notification tracker for this chat so old messages don't notify
     if (chatDataMap.has(id)) {
+        // Reset so next message will trigger notification
         lastNotifiedMsgId.delete(id);
     }
     
+    // Direct markeren als gelezen
     markAsRead();
     
     cancelReplyOrEdit();
@@ -1449,18 +1413,21 @@ async function openChat(id, name, pic, type) {
     if(msgUnsub) msgUnsub();
     if(typingUnsub) typingUnsub();
 
-    document.getElementById('chatMessages').innerHTML = '';
+    showChatSkeletons(); 
     setupChatListeners();
 }
 
 function setupChatListeners() {
     let ref;
+    // Bepaal de referentie voor BERICHTEN
     if(chatType === 'global') ref = db.collection("chats");
     else if(chatType === 'group') ref = db.collection("groups").doc(activeChatId).collection("messages");
     else ref = db.collection("private_chats").doc([user.uid, activeChatId].sort().join("_")).collection("messages");
 
+    // GEBRUIK DE HULP FUNCTIE VOOR CONSISTENTIE
     const typingDocId = getTypingDocId();
 
+    // Verbeterde Typing Listener op METADATA
     typingUnsub = db.collection("metadata").doc(typingDocId).onSnapshot(doc => {
         if(doc.exists) {
             const data = doc.data();
@@ -1475,7 +1442,7 @@ function setupChatListeners() {
                     const name = (typeof info === 'object') ? info.name : info;
                     const time = (typeof info === 'object') ? info.time : now; 
                     
-                    if (now - time < 5000) {
+                    if (now - time < 5000) { // Update < 5 sec geleden
                         activeTypers.push(name);
                     }
                 }
@@ -1492,254 +1459,74 @@ function setupChatListeners() {
     });
 
     msgUnsub = ref.orderBy("timestamp", "asc").limitToLast(msgLimit).onSnapshot(snap => {
-        const oldSnap = window.currentSnap;
         window.currentSnap = snap;
-        
-        if (!window.chatHasRenderedOnce || !oldSnap) {
-            renderMessagesFromCache();
-            window.chatHasRenderedOnce = true;
-        } else {
-            renderMessagesIncrementally(snap, oldSnap);
-        }
+        renderMessagesFromCache();
     });
 }
-
-function renderMessagesIncrementally(snap, oldSnap) {
-    const box = document.getElementById('chatMessages');
-    const changes = snap.docChanges();
-    const existingIds = new Set();
-    
-    Array.from(box.children).forEach(child => {
-        if (child.id && child.id.startsWith('msg-')) {
-            existingIds.add(child.id.replace('msg-', ''));
-        }
-    });
-
-    let newMessagesAdded = false;
-
-    changes.forEach(change => {
-        const doc = change.doc;
-        const msgId = doc.id;
-        const m = doc.data();
-        
-        if (change.type === 'added') {
-            if (existingIds.has(msgId)) return;
-            
-            const msgEl = createMessageElement(doc);
-            box.appendChild(msgEl);
-            newMessagesAdded = true;
-        }
-        else if (change.type === 'modified') {
-            const existingEl = document.getElementById(`msg-${msgId}`);
-            if (existingEl) {
-                const newEl = createMessageElement(doc);
-                const container = existingEl.closest('.msg-container, .msg');
-                if (container) container.replaceWith(newEl);
-            }
-        }
-        else if (change.type === 'removed') {
-            const existingEl = document.getElementById(`msg-${msgId}`);
-            if (existingEl) {
-                const container = existingEl.closest('.msg-container, .msg');
-                if (container) container.remove();
-            }
-        }
-    });
-
-    if (newMessagesAdded) {
-        requestAnimationFrame(() => {
-            box.scrollTop = box.scrollHeight;
-        });
-    }
-}
-
-function isUserAtBottom(threshold = 100) {
-    const box = document.getElementById('chatMessages');
-    return (box.scrollHeight - box.scrollTop - box.clientHeight) < threshold;
-}
-
-let isLoadingMore = false;
-let userScrolledAway = false;
 
 function checkScroll() {
     const box = document.getElementById('chatMessages');
-    const scrollTop = box.scrollTop;
-    const threshold = 100;
-    
-    userScrolledAway = (box.scrollHeight - scrollTop - box.clientHeight) > threshold;
-    
-    if (scrollTop === 0 && window.currentSnap && window.currentSnap.size >= msgLimit && !isLoadingMore) {
+    // Laad meer berichten als binnen 100px van de bovenkant
+    if (box.scrollTop < 100 && window.currentSnap && window.currentSnap.size >= msgLimit && !window._loadingMore) {
         loadMoreMessages();
     }
 }
 
 function loadMoreMessages() {
-    if (isLoadingMore) return;
-    isLoadingMore = true;
-    
+    if (window._loadingMore) return;
+    window._loadingMore = true;
+
     const oldLimit = msgLimit;
     msgLimit += 50; 
-    
+    document.getElementById('loadingOld').style.display = 'block';
     const box = document.getElementById('chatMessages');
-    const loadingEl = document.getElementById('loadingOld');
-    loadingEl.style.display = 'block';
-    
-    const oldScrollHeight = box.scrollHeight;
-    
+    const oldHeight = box.scrollHeight;
+    if(msgUnsub) msgUnsub();
+
     let ref;
     if(chatType === 'global') ref = db.collection("chats");
     else if(chatType === 'group') ref = db.collection("groups").doc(activeChatId).collection("messages");
     else ref = db.collection("private_chats").doc([user.uid, activeChatId].sort().join("_")).collection("messages");
 
+    let firstUpdate = true;
     msgUnsub = ref.orderBy("timestamp", "asc").limitToLast(msgLimit).onSnapshot(snap => {
-        const prevHeight = box.scrollHeight;
         window.currentSnap = snap;
-        
-        const fragment = document.createDocumentFragment();
-        const existingDate = box.querySelector('.date-divider:last-of-type');
-        const tempDiv = document.createElement('div');
-        tempDiv.style.display = 'none';
-        document.body.appendChild(tempDiv);
-        
-        let lastDateStr = existingDate ? existingDate.querySelector('span').textContent : "";
-        
-        const docs = snap.docs.slice(0, msgLimit - oldLimit);
-        
-        docs.forEach(doc => {
-            const m = doc.data();
-            if (m.timestamp) {
-                const date = m.timestamp.toDate();
-                const dateHeader = getFormattedDate(date);
-                if (dateHeader !== lastDateStr) {
-                    lastDateStr = dateHeader;
-                }
-            }
-        });
-        
-        const sortedDocs = [...snap.docs].sort((a, b) => {
-            const timeA = a.data().timestamp ? a.data().timestamp.toMillis() : 0;
-            const timeB = b.data().timestamp ? b.data().timestamp.toMillis() : 0;
-            return timeA - timeB;
-        });
-        
-        const existingMsgIds = new Set();
-        box.querySelectorAll('[id^="msg-"]').forEach(el => {
-            existingMsgIds.add(el.id.replace('msg-', ''));
-        });
-        
-        sortedDocs.forEach(doc => {
-            if (!existingMsgIds.has(doc.id)) {
-                const msgEl = createMessageElement(doc);
-                fragment.appendChild(msgEl);
-            }
-        });
-        
-        const firstMsg = box.querySelector('.msg-container, .msg.system');
-        if (firstMsg) {
-            box.insertBefore(fragment, firstMsg);
-        } else {
-            box.appendChild(fragment);
+        renderMessagesFromCache();
+        document.getElementById('loadingOld').style.display = 'none';
+        if (firstUpdate) {
+            firstUpdate = false;
+            // Herstel scrollpositie zodat gebruiker niet naar boven springt
+            requestAnimationFrame(() => {
+                const newHeight = box.scrollHeight;
+                box.scrollTop = newHeight - oldHeight;
+                window._loadingMore = false;
+            });
         }
-        
-        document.body.removeChild(tempDiv);
-        
-        loadingEl.style.display = 'none';
-        
-        const newScrollHeight = box.scrollHeight;
-        const heightDiff = newScrollHeight - prevHeight;
-        box.scrollTop = heightDiff + 10;
-        
-        isLoadingMore = false;
     });
-}
-
-function createMessageElement(doc) {
-    const m = doc.data();
-    let content = "";
-    let isMe = m.uid === user.uid;
-    let className = isMe ? 'sent' : 'received';
-    let timeStr = "";
-
-    if (m.uid && m.uid !== 'system') listenToUserUpdates(m.uid);
-
-    if (m.timestamp) {
-        const date = m.timestamp.toDate();
-        timeStr = date.getHours().toString().padStart(2,'0') + ":" + date.getMinutes().toString().padStart(2,'0');
-    }
-
-    const actueleNaam = userNameCache.get(m.uid) || m.user;
-    const nameSpan = `<span class="sender user-name-${m.uid}">${actueleNaam}</span>`;
-    let quotedBlock = "";
-
-    if (m.replyTo) {
-        quotedBlock = `
-        <div class="quoted-msg" onclick="scrollToMessage('${m.replyTo.id}')">
-            <span class="quoted-user">${m.replyTo.user}</span>
-            <span class="quoted-text">${m.replyTo.text}</span>
-        </div>`;
-    }
-
-    if (m.type === 'system') {
-        const div = document.createElement('div');
-        div.className = 'msg system';
-        div.id = `msg-${doc.id}`;
-        div.textContent = m.text;
-        return div;
-    }
-
-    if (m.image) {
-        content = `${nameSpan}${quotedBlock}<img class="msg-img-content" src="${m.image}" onclick="openImage('${m.image}')">`;
-    } else {
-        content = `${nameSpan}${quotedBlock}${linkify(m.text)}`;
-    }
-
-    const safeText = m.text ? encodeURIComponent(m.text) : "";
-    const safeUser = m.user ? m.user.replace(/'/g, "\\'") : "User";
-    const optsBtn = `<div class="opts-btn" title="Opties" onclick="handleContextMenu(event, '${doc.id}', '${m.uid}', '${safeUser}', '${safeText}')">•••</div>`;
-    const contextAttr = `oncontextmenu="handleContextMenu(event, '${doc.id}', '${m.uid}', '${safeUser}', '${safeText}')"`;
-
-    let editedSpan = m.edited ? `<span class="msg-edited">(bewerkt)</span>` : "";
-    let footerHtml = `<div class="msg-footer">${editedSpan}<span class="msg-time">${timeStr}</span></div>`;
-
-    let avatarHtml = "";
-    if (!isMe && (chatType === 'group' || chatType === 'global')) {
-        let avatarSrc = userCache.get(m.uid) || `https://ui-avatars.com/api/?name=${m.user}`;
-        avatarHtml = `<img src="${avatarSrc}" class="msg-avatar user-avatar-${m.uid}">`;
-    }
-
-    const container = document.createElement('div');
-    container.className = `msg-container ${className}`;
-    container.innerHTML = `
-        ${avatarHtml}
-        <div class="msg ${className}" id="msg-${doc.id}" ${contextAttr}>
-            ${optsBtn}${content}${footerHtml}
-        </div>
-    `;
-    return container;
 }
 
 function renderMessagesFromCache() {
-    if (!window.currentSnap) return;
+    if(!window.currentSnap) return;
     const box = document.getElementById('chatMessages');
+    const isAtBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 150;
     
-    box.innerHTML = "";
-    let lastDateStr = "";
+    // Gebruik een DocumentFragment voor veel betere performance
     const fragment = document.createDocumentFragment();
-    let hasMessages = false;
+    let lastDateStr = "";
 
-    const sortedDocs = [...window.currentSnap.docs].sort((a, b) => {
-        const timeA = a.data().timestamp ? a.data().timestamp.toMillis() : 0;
-        const timeB = b.data().timestamp ? b.data().timestamp.toMillis() : 0;
-        return timeA - timeB;
-    });
-
-    sortedDocs.forEach(doc => {
+    window.currentSnap.forEach(doc => {
         const m = doc.data();
-        
-        if (m.timestamp) {
+        let isMe = m.uid === user.uid;
+        let className = isMe ? 'sent' : 'received';
+        let timeStr = "";
+
+        if(m.uid && m.uid !== 'system') listenToUserUpdates(m.uid);
+
+        if(m.timestamp) {
             const date = m.timestamp.toDate();
+            timeStr = date.getHours().toString().padStart(2,'0') + ":" + date.getMinutes().toString().padStart(2,'0');
             const dateHeader = getFormattedDate(date);
-            if (dateHeader !== lastDateStr) {
+            if(dateHeader !== lastDateStr) {
                 const divider = document.createElement('div');
                 divider.className = 'date-divider';
                 divider.innerHTML = `<span>${dateHeader}</span>`;
@@ -1748,16 +1535,61 @@ function renderMessagesFromCache() {
             }
         }
 
-        const msgEl = createMessageElement(doc);
-        fragment.appendChild(msgEl);
-        hasMessages = true;
+        const actueleNaam = userNameCache.get(m.uid) || m.user;
+
+        if (m.type === 'system') {
+            const sysEl = document.createElement('div');
+            sysEl.className = 'msg system';
+            sysEl.textContent = m.text;
+            fragment.appendChild(sysEl);
+            return;
+        }
+
+        let quotedBlock = "";
+        if (m.replyTo) {
+            quotedBlock = `<div class="quoted-msg" onclick="scrollToMessage('${m.replyTo.id}')">
+                <span class="quoted-user">${m.replyTo.user}</span>
+                <span class="quoted-text">${m.replyTo.text}</span>
+            </div>`;
+        }
+
+        const nameSpan = `<span class="sender user-name-${m.uid}">${actueleNaam}</span>`;
+        let content = "";
+        if (m.image) {
+            content = `${nameSpan}${quotedBlock}<img class="msg-img-content" src="${m.image}" onclick="openImage('${m.image}')">`;
+        } else {
+            content = `${nameSpan}${quotedBlock}${linkify(m.text)}`;
+        }
+        
+        const safeText = m.text ? encodeURIComponent(m.text) : "";
+        const safeUser = m.user ? m.user.replace(/'/g, "\\'") : "User";
+        const optsBtn = `<div class="opts-btn" title="Opties" onclick="handleContextMenu(event, '${doc.id}', '${m.uid}', '${safeUser}', '${safeText}')">•••</div>`;
+        const contextAttr = `oncontextmenu="handleContextMenu(event, '${doc.id}', '${m.uid}', '${safeUser}', '${safeText}')"`;
+
+        let editedSpan = m.edited ? `<span class="msg-edited">(bewerkt)</span>` : "";
+        let footerHtml = `<div class="msg-footer">${editedSpan}<span class="msg-time">${timeStr}</span></div>`;
+
+        let avatarHtml = "";
+        if (!isMe && (chatType === 'group' || chatType === 'global')) {
+            let avatarSrc = userCache.get(m.uid) || `https://ui-avatars.com/api/?name=${m.user}`;
+            avatarHtml = `<img src="${avatarSrc}" class="msg-avatar user-avatar-${m.uid}">`;
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = `msg-container ${className}`;
+        wrapper.innerHTML = `
+            ${avatarHtml}
+            <div class="msg ${className}" id="msg-${doc.id}" ${contextAttr}>
+                ${optsBtn}${content}${footerHtml}
+            </div>`;
+        fragment.appendChild(wrapper);
     });
 
+    // Eén keer de DOM updaten — dit is de performance winst
+    box.innerHTML = "";
     box.appendChild(fragment);
 
-    requestAnimationFrame(() => {
-        box.scrollTop = box.scrollHeight;
-    });
+    if (msgLimit === 50 || isAtBottom) box.scrollTop = box.scrollHeight;
 }
 
 function viewUserProfile(uid) {
@@ -2595,40 +2427,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const msgInput = document.getElementById('messageInput');
     if (!msgInput) return;
 
-    // 1. Plakken (Ctrl+V)
-    msgInput.addEventListener('paste', function(e) {
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (let index in items) {
-            const item = items[index];
-            if (item.kind === 'file' && item.type.indexOf('image/') !== -1) {
-                const blob = item.getAsFile();
-                // Gebruik je bestaande handleImageSend functie
-                handleImageSend({ files: [blob] });
-            }
-        }
-    });
-
-    // 2. Slepen en Neerzetten (Drag & Drop)
-    msgInput.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        msgInput.style.border = "2px dashed var(--primary)"; // Visuele hint
-    });
-
-    msgInput.addEventListener('dragleave', () => {
-        msgInput.style.border = "1px solid #1e293b"; // Herstel border
-    });
-
-    msgInput.addEventListener('drop', (e) => {
-        e.preventDefault();
-        msgInput.style.border = "1px solid #1e293b";
-        
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            const file = e.dataTransfer.files[0];
-            if (file.type.startsWith('image/')) {
-                handleImageSend({ files: [file] });
-            }
-        }
-    });
+    // Slepen en Neerzetten en plakken worden al afgehandeld door de hoofd-listeners hierboven
 });
 </script>
 <script>var d=document,w="https://tally.so/widgets/embed.js",v=function(){"undefined"!=typeof Tally?Tally.loadEmbeds():d.querySelectorAll("iframe[data-tally-src]:not([src])").forEach((function(e){e.src=e.dataset.tallySrc}))};if("undefined"!=typeof Tally)v();else if(d.querySelector('script[src="'+w+'"]')==null){var s=d.createElement("script");s.src=w,s.onload=v,s.onerror=v,d.body.appendChild(s);}</script>

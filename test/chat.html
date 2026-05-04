@@ -1466,8 +1466,8 @@ function setupChatListeners() {
 
 function checkScroll() {
     const box = document.getElementById('chatMessages');
-    // Laad meer berichten als binnen 100px van de bovenkant
-    if (box.scrollTop < 100 && window.currentSnap && window.currentSnap.size >= msgLimit && !window._loadingMore) {
+    // Laad eerder — al bij 300px van de bovenkant, zodat het klaar is voor je er bent
+    if (box.scrollTop < 300 && window.currentSnap && window.currentSnap.size >= msgLimit && !window._loadingMore) {
         loadMoreMessages();
     }
 }
@@ -1500,11 +1500,14 @@ function loadMoreMessages() {
 function renderMessagesFromCache() {
     if(!window.currentSnap) return;
     const box = document.getElementById('chatMessages');
-    // Sla scrollpositie op VOOR het renderen
+
+    const isLoadingMore = window._loadingMore;
     const scrollBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
     const isAtBottom = scrollBottom < 150;
-    const isLoadingMore = window._loadingMore; // Als we aan het laden zijn, scroll NIET naar beneden
-    
+
+    // Sla de HUIDIGE scrollHeight op vóór we de DOM wissen
+    const scrollHeightBefore = box.scrollHeight;
+
     // Gebruik een DocumentFragment voor veel betere performance
     const fragment = document.createDocumentFragment();
     let lastDateStr = "";
@@ -1585,11 +1588,11 @@ function renderMessagesFromCache() {
     box.appendChild(fragment);
 
     if (isLoadingMore) {
-        // Herstel positie zodat de gebruiker NIET omlaag schiet
-        // scrollBottom was hoeveel px van beneden we zaten — zet dat terug
-        box.scrollTop = box.scrollHeight - box.clientHeight - scrollBottom;
+        // Bereken hoeveel de scrollHeight is gegroeid door nieuwe berichten bovenaan
+        // en zet de scroll precies op dat verschil — zo blijft de viewport op dezelfde plek
+        const scrollHeightAfter = box.scrollHeight;
+        box.scrollTop = scrollHeightAfter - scrollHeightBefore + (scrollHeightBefore - scrollBottom - box.clientHeight);
     } else if (msgLimit === 50 || isAtBottom) {
-        // Eerste load of gebruiker zat al onderaan
         box.scrollTop = box.scrollHeight;
     }
 }

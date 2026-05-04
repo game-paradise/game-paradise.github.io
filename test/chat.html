@@ -1476,11 +1476,8 @@ function loadMoreMessages() {
     if (window._loadingMore) return;
     window._loadingMore = true;
 
-    const oldLimit = msgLimit;
     msgLimit += 50; 
     document.getElementById('loadingOld').style.display = 'block';
-    const box = document.getElementById('chatMessages');
-    const oldHeight = box.scrollHeight;
     if(msgUnsub) msgUnsub();
 
     let ref;
@@ -1491,16 +1488,11 @@ function loadMoreMessages() {
     let firstUpdate = true;
     msgUnsub = ref.orderBy("timestamp", "asc").limitToLast(msgLimit).onSnapshot(snap => {
         window.currentSnap = snap;
-        renderMessagesFromCache();
+        renderMessagesFromCache(); // scroll wordt nu intern goed afgehandeld
         document.getElementById('loadingOld').style.display = 'none';
         if (firstUpdate) {
             firstUpdate = false;
-            // Herstel scrollpositie zodat gebruiker niet naar boven springt
-            requestAnimationFrame(() => {
-                const newHeight = box.scrollHeight;
-                box.scrollTop = newHeight - oldHeight;
-                window._loadingMore = false;
-            });
+            window._loadingMore = false;
         }
     });
 }
@@ -1508,7 +1500,10 @@ function loadMoreMessages() {
 function renderMessagesFromCache() {
     if(!window.currentSnap) return;
     const box = document.getElementById('chatMessages');
-    const isAtBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 150;
+    // Sla scrollpositie op VOOR het renderen
+    const scrollBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
+    const isAtBottom = scrollBottom < 150;
+    const isLoadingMore = window._loadingMore; // Als we aan het laden zijn, scroll NIET naar beneden
     
     // Gebruik een DocumentFragment voor veel betere performance
     const fragment = document.createDocumentFragment();
@@ -1589,7 +1584,14 @@ function renderMessagesFromCache() {
     box.innerHTML = "";
     box.appendChild(fragment);
 
-    if (msgLimit === 50 || isAtBottom) box.scrollTop = box.scrollHeight;
+    if (isLoadingMore) {
+        // Herstel positie zodat de gebruiker NIET omlaag schiet
+        // scrollBottom was hoeveel px van beneden we zaten — zet dat terug
+        box.scrollTop = box.scrollHeight - box.clientHeight - scrollBottom;
+    } else if (msgLimit === 50 || isAtBottom) {
+        // Eerste load of gebruiker zat al onderaan
+        box.scrollTop = box.scrollHeight;
+    }
 }
 
 function viewUserProfile(uid) {

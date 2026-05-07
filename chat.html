@@ -25,22 +25,6 @@
         });
       }
     </script>
-<script>
-  // Dit zorgt ervoor dat de browser de app-bestanden registreert
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js')
-        .then(reg => console.log('Service Worker geregistreerd!', reg))
-        .catch(err => console.error('Service Worker mislukt:', err));
-    });
-  }
-</script>
-    
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     
     <style>
         :root {
@@ -661,19 +645,6 @@ function checkProfanity(text) {
     const allBadWords = [...badWords, ...firebaseBannedWords];
     return allBadWords.some(word => text.toLowerCase().includes(word)); 
 }
-// Functie om de gekozen afbeelding direct te tonen (preview)
-function previewImage(input, previewId) {
-    const preview = document.getElementById(previewId);
-    if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            preview.src = e.target.result;
-            currentBase64 = e.target.result; // Slaat de foto op in het geheugen
-        };
-        reader.readAsDataURL(input.files[0]);
-    }
-}
-
 // Functie die wordt uitgevoerd als je op 'Start ➤' klikt
 async function completeSetup() {
     const name = document.getElementById('setupName').value.trim();
@@ -742,15 +713,13 @@ let replyContext = null;
 let editMessageId = null; 
 
     function showDesktopNotification(sender, text, chatId) {
-    // Skip if tab is visible AND this is the active chat
-    if (!document.hidden && activeChatId === chatId) {
+    // Nooit notificeren als het tabblad zichtbaar en in focus is
+    if (!document.hidden && document.hasFocus()) {
         return;
     }
     
-    // Skip if another tab was recently active with this chat
-    const globalActiveChat = localStorage.getItem('currentActiveChat');
-    const lastActivity = parseInt(localStorage.getItem('lastActivity') || '0');
-    if (!document.hidden && (Date.now() - lastActivity) < 5000 && globalActiveChat === chatId) {
+    // Skip als dit de actieve chat is én het tabblad zichtbaar is
+    if (!document.hidden && activeChatId === chatId) {
         return;
     }
 
@@ -864,12 +833,6 @@ function updatePresence(status) {
             console.warn("Kon status niet opslaan:", err);
         });
     }
-}
-function updatePresence(status) { 
-    if(user) db.collection("users").doc(user.uid).update({ 
-        status: status, 
-        lastSeen: firebase.firestore.FieldValue.serverTimestamp() 
-    }); 
 }
 
 async function checkSetup() {
@@ -1503,15 +1466,18 @@ function setupChatListeners() {
 
 function checkScroll() {
     const box = document.getElementById('chatMessages');
-    if (box.scrollTop === 0 && window.currentSnap && window.currentSnap.size >= msgLimit) { loadMoreMessages(); }
+    // Laad eerder — al bij 300px van de bovenkant, zodat het klaar is voor je er bent
+    if (box.scrollTop < 300 && window.currentSnap && window.currentSnap.size >= msgLimit && !window._loadingMore) {
+        loadMoreMessages();
+    }
 }
 
 function loadMoreMessages() {
-    const oldLimit = msgLimit;
+    if (window._loadingMore) return;
+    window._loadingMore = true;
+
     msgLimit += 50; 
     document.getElementById('loadingOld').style.display = 'block';
-    const box = document.getElementById('chatMessages');
-    const oldHeight = box.scrollHeight;
     if(msgUnsub) msgUnsub();
 
     let ref;
@@ -1519,13 +1485,14 @@ function loadMoreMessages() {
     else if(chatType === 'group') ref = db.collection("groups").doc(activeChatId).collection("messages");
     else ref = db.collection("private_chats").doc([user.uid, activeChatId].sort().join("_")).collection("messages");
 
+    let firstUpdate = true;
     msgUnsub = ref.orderBy("timestamp", "asc").limitToLast(msgLimit).onSnapshot(snap => {
         window.currentSnap = snap;
-        renderMessagesFromCache();
+        renderMessagesFromCache(); // scroll wordt nu intern goed afgehandeld
         document.getElementById('loadingOld').style.display = 'none';
-        if (oldLimit !== msgLimit) {
-            const newHeight = box.scrollHeight;
-            box.scrollTop = newHeight - oldHeight;
+        if (firstUpdate) {
+            firstUpdate = false;
+            window._loadingMore = false;
         }
     });
 }
@@ -1533,14 +1500,19 @@ function loadMoreMessages() {
 function renderMessagesFromCache() {
     if(!window.currentSnap) return;
     const box = document.getElementById('chatMessages');
-    const isAtBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 100;
-    
-    box.innerHTML = "";
+
+    const isLoadingMore = window._loadingMore;
+    const isAtBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 150;
+
+    // Bewaar ALLES voordat de DOM aangepast wordt
+    const oldScrollHeight = box.scrollHeight;
+    const oldScrollTop = box.scrollTop;
+
+    const fragment = document.createDocumentFragment();
     let lastDateStr = "";
 
     window.currentSnap.forEach(doc => {
         const m = doc.data();
-        let content = "";
         let isMe = m.uid === user.uid;
         let className = isMe ? 'sent' : 'received';
         let timeStr = "";
@@ -1552,35 +1524,40 @@ function renderMessagesFromCache() {
             timeStr = date.getHours().toString().padStart(2,'0') + ":" + date.getMinutes().toString().padStart(2,'0');
             const dateHeader = getFormattedDate(date);
             if(dateHeader !== lastDateStr) {
-                box.innerHTML += `<div class="date-divider"><span>${dateHeader}</span></div>`;
+                const divider = document.createElement('div');
+                divider.className = 'date-divider';
+                divider.innerHTML = `<span>${dateHeader}</span>`;
+                fragment.appendChild(divider);
                 lastDateStr = dateHeader;
             }
         }
 
         const actueleNaam = userNameCache.get(m.uid) || m.user;
-const nameSpan = `<span class="sender user-name-${m.uid}">${actueleNaam}</span>`;
-        let quotedBlock = "";
 
+        if (m.type === 'system') {
+            const sysEl = document.createElement('div');
+            sysEl.className = 'msg system';
+            sysEl.textContent = m.text;
+            fragment.appendChild(sysEl);
+            return;
+        }
+
+        let quotedBlock = "";
         if (m.replyTo) {
-            quotedBlock = `
-            <div class="quoted-msg" onclick="scrollToMessage('${m.replyTo.id}')">
+            quotedBlock = `<div class="quoted-msg" onclick="scrollToMessage('${m.replyTo.id}')">
                 <span class="quoted-user">${m.replyTo.user}</span>
                 <span class="quoted-text">${m.replyTo.text}</span>
             </div>`;
         }
 
-        if (m.type === 'system') {
-            box.innerHTML += `<div class="msg system">${m.text}</div>`;
-            return; // System messages have no avatar
-        }
-        
+        const nameSpan = `<span class="sender user-name-${m.uid}">${actueleNaam}</span>`;
+        let content = "";
         if (m.image) {
             content = `${nameSpan}${quotedBlock}<img class="msg-img-content" src="${m.image}" onclick="openImage('${m.image}')">`;
         } else {
             content = `${nameSpan}${quotedBlock}${linkify(m.text)}`;
         }
         
-        // Context menu helpers
         const safeText = m.text ? encodeURIComponent(m.text) : "";
         const safeUser = m.user ? m.user.replace(/'/g, "\\'") : "User";
         const optsBtn = `<div class="opts-btn" title="Opties" onclick="handleContextMenu(event, '${doc.id}', '${m.uid}', '${safeUser}', '${safeText}')">•••</div>`;
@@ -1589,25 +1566,33 @@ const nameSpan = `<span class="sender user-name-${m.uid}">${actueleNaam}</span>`
         let editedSpan = m.edited ? `<span class="msg-edited">(bewerkt)</span>` : "";
         let footerHtml = `<div class="msg-footer">${editedSpan}<span class="msg-time">${timeStr}</span></div>`;
 
-        // AVATAR LOGIC (Only for received messages in group/global)
         let avatarHtml = "";
         if (!isMe && (chatType === 'group' || chatType === 'global')) {
-            // Haal avatar uit cache of gebruik fallback
             let avatarSrc = userCache.get(m.uid) || `https://ui-avatars.com/api/?name=${m.user}`;
-            // Geen onClick meer hier
             avatarHtml = `<img src="${avatarSrc}" class="msg-avatar user-avatar-${m.uid}">`;
         }
 
-        box.innerHTML += `
-        <div class="msg-container ${className}">
+        const wrapper = document.createElement('div');
+        wrapper.className = `msg-container ${className}`;
+        wrapper.innerHTML = `
             ${avatarHtml}
             <div class="msg ${className}" id="msg-${doc.id}" ${contextAttr}>
                 ${optsBtn}${content}${footerHtml}
-            </div>
-        </div>`;
+            </div>`;
+        fragment.appendChild(wrapper);
     });
 
-    if (msgLimit === 50 || isAtBottom) box.scrollTop = box.scrollHeight;
+    box.innerHTML = "";
+    box.appendChild(fragment);
+
+    if (isLoadingMore) {
+        // Nieuwe berichten zijn bovenaan toegevoegd — scrollHeight is gegroeid
+        // Zet scrollTop op het verschil zodat de viewport op dezelfde plek blijft
+        const heightDiff = box.scrollHeight - oldScrollHeight;
+        box.scrollTop = oldScrollTop + heightDiff;
+    } else if (isAtBottom || msgLimit === 50) {
+        box.scrollTop = box.scrollHeight;
+    }
 }
 
 function viewUserProfile(uid) {
@@ -2445,40 +2430,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const msgInput = document.getElementById('messageInput');
     if (!msgInput) return;
 
-    // 1. Plakken (Ctrl+V)
-    msgInput.addEventListener('paste', function(e) {
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (let index in items) {
-            const item = items[index];
-            if (item.kind === 'file' && item.type.indexOf('image/') !== -1) {
-                const blob = item.getAsFile();
-                // Gebruik je bestaande handleImageSend functie
-                handleImageSend({ files: [blob] });
-            }
-        }
-    });
-
-    // 2. Slepen en Neerzetten (Drag & Drop)
-    msgInput.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        msgInput.style.border = "2px dashed var(--primary)"; // Visuele hint
-    });
-
-    msgInput.addEventListener('dragleave', () => {
-        msgInput.style.border = "1px solid #1e293b"; // Herstel border
-    });
-
-    msgInput.addEventListener('drop', (e) => {
-        e.preventDefault();
-        msgInput.style.border = "1px solid #1e293b";
-        
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            const file = e.dataTransfer.files[0];
-            if (file.type.startsWith('image/')) {
-                handleImageSend({ files: [file] });
-            }
-        }
-    });
+    // Slepen en Neerzetten en plakken worden al afgehandeld door de hoofd-listeners hierboven
 });
 </script>
 <script>var d=document,w="https://tally.so/widgets/embed.js",v=function(){"undefined"!=typeof Tally?Tally.loadEmbeds():d.querySelectorAll("iframe[data-tally-src]:not([src])").forEach((function(e){e.src=e.dataset.tallySrc}))};if("undefined"!=typeof Tally)v();else if(d.querySelector('script[src="'+w+'"]')==null){var s=d.createElement("script");s.src=w,s.onload=v,s.onerror=v,d.body.appendChild(s);}</script>

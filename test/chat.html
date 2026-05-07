@@ -1502,14 +1502,14 @@ function renderMessagesFromCache() {
     const box = document.getElementById('chatMessages');
 
     const isLoadingMore = window._loadingMore;
-    const scrollBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
-    const isAtBottom = scrollBottom < 150;
+    const isAtBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 150;
 
-    // Sla de HUIDIGE scrollHeight op vóór we de DOM wissen
-    const scrollHeightBefore = box.scrollHeight;
+    // Bewaar ALLES voordat de DOM aangepast wordt
+    const oldScrollHeight = box.scrollHeight;
+    const oldScrollTop = box.scrollTop;
 
-    // Gebruik een DocumentFragment voor veel betere performance
     const fragment = document.createDocumentFragment();
+    let lastDateStr = "";
     let lastDateStr = "";
 
     window.currentSnap.forEach(doc => {
@@ -1583,16 +1583,15 @@ function renderMessagesFromCache() {
         fragment.appendChild(wrapper);
     });
 
-    // Eén keer de DOM updaten — dit is de performance winst
     box.innerHTML = "";
     box.appendChild(fragment);
 
     if (isLoadingMore) {
-        // Bereken hoeveel de scrollHeight is gegroeid door nieuwe berichten bovenaan
-        // en zet de scroll precies op dat verschil — zo blijft de viewport op dezelfde plek
-        const scrollHeightAfter = box.scrollHeight;
-        box.scrollTop = scrollHeightAfter - scrollHeightBefore + (scrollHeightBefore - scrollBottom - box.clientHeight);
-    } else if (msgLimit === 50 || isAtBottom) {
+        // Nieuwe berichten zijn bovenaan toegevoegd — scrollHeight is gegroeid
+        // Zet scrollTop op het verschil zodat de viewport op dezelfde plek blijft
+        const heightDiff = box.scrollHeight - oldScrollHeight;
+        box.scrollTop = oldScrollTop + heightDiff;
+    } else if (isAtBottom || msgLimit === 50) {
         box.scrollTop = box.scrollHeight;
     }
 }

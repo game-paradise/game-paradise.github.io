@@ -629,13 +629,15 @@ function previewImage(input, previewId) {
     const preview = document.getElementById(previewId);
     if (input.files && input.files[0]) {
         const reader = new FileReader();
-        
         reader.onload = function(e) {
             preview.src = e.target.result;
-            // Sla de base64 string op in de globale variabele voor later gebruik (bijv. opslaan)
-            currentBase64 = e.target.result; 
+            // Gebruik aparte variabele voor profielfoto zodat ze elkaar niet overschrijven
+            if (previewId === 'editPreview') {
+                window.profileBase64 = e.target.result;
+            } else {
+                currentBase64 = e.target.result;
+            }
         }
-        
         reader.readAsDataURL(input.files[0]);
     }
 }
@@ -2088,16 +2090,39 @@ function notify(title, body, icon, chatId, type) {
     }
 }
 async function saveProfile() {
-    const name = document.getElementById('editName').value;
+    const name = document.getElementById('editName').value.trim();
+    if (!name) { alert("Vul een naam in."); return; }
     if (checkProfanity(name)) { document.getElementById('profileError').style.display = 'block'; return; }
-    const update = { name }; if(currentBase64) update.pic = currentBase64;
-    await db.collection("users").doc(user.uid).update(update);
-    closeModal('profileModal');
+
+    const saveBtn = document.querySelector('#profileModal .btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Opslaan...";
+
+    try {
+        const update = { name };
+        // Gebruik profileBase64 in plaats van de gedeelde currentBase64
+        if (window.profileBase64) update.pic = window.profileBase64;
+        await db.collection("users").doc(user.uid).update(update);
+        window.profileBase64 = null;
+        closeModal('profileModal');
+    } catch(e) {
+        console.error("Fout bij opslaan profiel:", e);
+        alert("Er ging iets mis bij het opslaan. Probeer opnieuw.");
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Opslaan";
+    }
 }
 function switchTab(t, el) { document.querySelectorAll('.tab').forEach(x => x.classList.remove('active')); el.classList.add('active'); renderSidebar(); }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 function openImage(src) { document.getElementById('imgViewer').src = src; document.getElementById('imgDownload').href = src; document.getElementById('imageModal').style.display = 'flex'; }
-function openProfile() { currentBase64 = null; document.getElementById('editName').value = document.getElementById('myName').innerText; document.getElementById('editPreview').src = document.getElementById('myAvatar').src; document.getElementById('profileError').style.display = 'none'; document.getElementById('profileModal').style.display = 'flex'; }
+function openProfile() { 
+    window.profileBase64 = null; 
+    document.getElementById('editName').value = document.getElementById('myName').innerText; 
+    document.getElementById('editPreview').src = document.getElementById('myAvatar').src; 
+    document.getElementById('profileError').style.display = 'none'; 
+    document.getElementById('profileModal').style.display = 'flex'; 
+}
 function openGroupModal() {
     currentBase64 = null; document.getElementById('groupCreatePreview').src = "https://ui-avatars.com/api/?name=Group";
     document.getElementById('groupModal').style.display = 'flex';

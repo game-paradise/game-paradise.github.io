@@ -457,7 +457,7 @@ document.getElementById("forgotPasswordSubmit").onclick = () => {
     auth.sendPasswordResetEmail(email)
         .then(() => {
             document.getElementById("loginModal").style.display = "none";
-            notify("✅ Reset-e-mail verzonden! Check je inbox.");
+            notify("✅ Reset-e-mail verzonden! Check je inbox. (Kijk ook in de spam!)");
         })
         .catch(err => {
             let msg = err.message;

@@ -244,7 +244,7 @@
         <input id="passwordInput" type="password" name="password" autocomplete="current-password" placeholder="Wachtwoord">
         
         <button id="loginSubmit" style="background: var(--primary); color: white;">Inloggen</button>
-        <button id="registerSubmit" style="background: #16a34a; color: white;">Account aanvragen</button>
+        <button id="registerSubmit" style="background: #16a34a; color: white;">Account aanmaken</button>
         <button id="forgotPasswordSubmit" style="background: #334155; color: white;">Wachtwoord vergeten</button>
         <button onclick="document.getElementById('loginModal').style.display='none'" style="background:transparent; color: var(--text-dim);">Annuleren</button>
     </div>
@@ -268,18 +268,7 @@
     </div>
 </div>
 
-<div id="registerModal" class="modal">
-    <div class="modal-box" style="width: 500px; max-height: 90vh;">
-        <iframe data-tally-src="https://tally.so/embed/yPYeEd?alignLeft=1&hideTitle=1&transparentBackground=1&dynamicHeight=1" width="100%" height="500" frameborder="0" title="Account aanvraag"></iframe>
-        <button onclick="document.getElementById('registerModal').style.display='none'" style="margin-top:20px; background: #1e293b; color: white;">Sluiten</button>
-    </div>
-</div>
-<div id="forgotPasswordModal" class="modal">
-    <div class="modal-box" style="width: 500px;">
-        <iframe data-tally-src="https://tally.so/embed/gDGQPM?alignLeft=1&hideTitle=1&transparentBackground=1&dynamicHeight=1" width="100%" height="424" frameborder="0" title="Wachtwoord vergeten"></iframe>
-        <button onclick="document.getElementById('forgotPasswordModal').style.display='none'" style="margin-top:20px; background: #1e293b; color: white;">Sluiten</button>
-    </div>
-</div>
+
 <div id="supportModal" class="modal">
     <div class="modal-box" style="width: 500px;">
         <iframe data-tally-src="https://tally.so/embed/jaPkda?alignLeft=1&hideTitle=1&transparentBackground=1&dynamicHeight=1" width="100%" height="424" frameborder="0" title="Support"></iframe>
@@ -410,13 +399,53 @@ document.getElementById("loginSubmit").onclick = () => {
 };
 
 document.getElementById("registerSubmit").onclick = () => {
-    document.getElementById("loginModal").style.display = "none";
-    document.getElementById("registerModal").style.display = "flex";
+    const email = document.getElementById("emailInput").value;
+    const pass = document.getElementById("passwordInput").value;
+    if (!email || !pass) {
+        notify("❌ Vul e-mail en wachtwoord in", "danger");
+        return;
+    }
+    if (pass.length < 6) {
+        notify("⚠️ Wachtwoord moet minstens 6 tekens zijn", "danger");
+        return;
+    }
+    auth.createUserWithEmailAndPassword(email, pass)
+        .then((cred) => {
+            return db.collection("users").doc(cred.user.uid).set({
+                email: email,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        })
+        .then(() => {
+            document.getElementById("loginModal").style.display = "none";
+            notify("✅ Account aangemaakt & ingelogd!");
+        })
+        .catch(err => {
+            let msg = err.message;
+            if (err.code === "auth/email-already-in-use") msg = "❌ Dit e-mailadres is al in gebruik";
+            else if (err.code === "auth/weak-password") msg = "⚠️ Wachtwoord is te zwak (min. 6 tekens)";
+            else if (err.code === "auth/invalid-email") msg = "❌ Ongeldig e-mailadres";
+            notify(msg, "danger");
+        });
 };
 
 document.getElementById("forgotPasswordSubmit").onclick = () => {
-    document.getElementById("loginModal").style.display = "none";
-    document.getElementById("forgotPasswordModal").style.display = "flex";
+    const email = document.getElementById("emailInput").value;
+    if (!email) {
+        notify("❌ Vul je e-mailadres in", "danger");
+        return;
+    }
+    auth.sendPasswordResetEmail(email)
+        .then(() => {
+            document.getElementById("loginModal").style.display = "none";
+            notify("✅ Reset-e-mail verzonden! Check je inbox.");
+        })
+        .catch(err => {
+            let msg = err.message;
+            if (err.code === "auth/user-not-found") msg = "❌ Geen account gevonden met dit e-mailadres";
+            else if (err.code === "auth/invalid-email") msg = "❌ Ongeldig e-mailadres";
+            notify(msg, "danger");
+        });
 };
 
 function loadGames() {

@@ -137,6 +137,10 @@
         }
         .modal-box input { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 10px; border: 1px solid #334155; background: #020617; color: white; }
         .modal-box button { width: 100%; padding: 12px; border-radius: 10px; border: none; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        .password-wrapper { position: relative; width: 100%; }
+        .password-wrapper input { padding-right: 42px; margin-bottom: 10px; }
+        .password-toggle { position: absolute; right: 10px; top: 9px; width: 26px; height: 26px; cursor: pointer; background: none; border: none; padding: 0; z-index: 2; }
+        .password-toggle img { width: 100%; height: 100%; display: block; pointer-events: none; }
         
         #toast-container { position: fixed; top: 20px; right: 20px; z-index: 99999; }
         .toast { background: #1e293b; color: white; padding: 15px 20px; border-radius: 12px; margin-bottom: 10px; border-left: 5px solid var(--primary); animation: slideIn 0.3s ease; }
@@ -241,7 +245,10 @@
     <div class="modal-box">
         <h2>Inloggen</h2>
         <input id="emailInput" type="email" name="email" autocomplete="username" placeholder="E-mail">
-        <input id="passwordInput" type="password" name="password" autocomplete="current-password" placeholder="Wachtwoord">
+        <div class="password-wrapper">
+            <input id="passwordInput" type="password" name="password" autocomplete="current-password" placeholder="Wachtwoord">
+            <button class="password-toggle" type="button" onclick="togglePassword('passwordInput')"><img src="https://i.imgur.com/hvIaSW7.png" alt="Toggle"></button>
+        </div>
         
         <button id="loginSubmit" style="background: var(--primary); color: white;">Inloggen</button>
         <button id="registerSubmit" style="background: #16a34a; color: white;">Account aanmaken</button>
@@ -388,6 +395,18 @@ document.getElementById("authBtn").onclick = () => {
 function openLoginFromFav() {
     document.getElementById("favModal").style.display = "none";
     document.getElementById("loginModal").style.display = "flex";
+}
+
+function togglePassword(id) {
+    const input = document.getElementById(id);
+    const img = input.parentElement.querySelector('.password-toggle img');
+    if (input.type === 'password') {
+        input.type = 'text';
+        img.src = 'https://i.imgur.com/4YSPnei.png';
+    } else {
+        input.type = 'password';
+        img.src = 'https://i.imgur.com/hvIaSW7.png';
+    }
 }
 
 document.getElementById("loginSubmit").onclick = () => {

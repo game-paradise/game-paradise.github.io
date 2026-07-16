@@ -199,6 +199,8 @@
         id="searchInput" 
         type="search" 
         placeholder="Zoek games..." 
+        autocomplete="off"
+        name="game-search"
         oninput="renderGames()"
     >
   </div>
@@ -266,26 +268,30 @@
         <!-- Inloggen paneel -->
         <div id="panelLogin">
             <h2 style="margin-top: 0;">Inloggen</h2>
-            <input id="emailInput" type="email" name="email" autocomplete="username" placeholder="E-mail">
-            <div class="password-wrapper">
-                <input id="passwordInput" type="password" name="password" autocomplete="current-password" placeholder="Wachtwoord">
-                <button class="password-toggle" type="button" onclick="togglePassword('passwordInput')" aria-label="Toon wachtwoord"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
-            </div>
-            <button id="loginSubmit" style="background: var(--primary); color: white;">Inloggen</button>
-            <button id="forgotPasswordSubmit" style="background: #334155; color: white;">Wachtwoord vergeten</button>
-            <button onclick="document.getElementById('loginModal').style.display='none'" style="background:transparent; color: var(--text-dim);">Annuleren</button>
+            <form id="loginForm" autocomplete="on" onsubmit="return false;">
+                <input id="emailInput" type="email" name="email" autocomplete="username" placeholder="E-mail">
+                <div class="password-wrapper">
+                    <input id="passwordInput" type="password" name="password" autocomplete="current-password" placeholder="Wachtwoord">
+                    <button class="password-toggle" type="button" onclick="togglePassword('passwordInput')" aria-label="Toon wachtwoord"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                </div>
+                <button id="loginSubmit" type="submit" style="background: var(--primary); color: white;">Inloggen</button>
+                <button id="forgotPasswordSubmit" type="button" style="background: #334155; color: white;">Wachtwoord vergeten</button>
+                <button type="button" onclick="document.getElementById('loginModal').style.display='none'" style="background:transparent; color: var(--text-dim);">Annuleren</button>
+            </form>
         </div>
 
         <!-- Account aanmaken paneel -->
         <div id="panelRegister" style="display:none;">
             <h2 style="margin-top: 0;">Account aanmaken</h2>
-            <input id="regEmailInput" type="email" name="email" autocomplete="username" placeholder="E-mail">
-            <div class="password-wrapper">
-                <input id="regPasswordInput" type="password" name="password" autocomplete="new-password" placeholder="Wachtwoord (min. 6 tekens)">
-                <button class="password-toggle" type="button" onclick="togglePassword('regPasswordInput')" aria-label="Toon wachtwoord"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
-            </div>
-            <button id="registerSubmit" style="background: #16a34a; color: white;">Account aanmaken</button>
-            <button onclick="document.getElementById('loginModal').style.display='none'" style="background:transparent; color: var(--text-dim);">Annuleren</button>
+            <form id="registerForm" autocomplete="on" onsubmit="return false;">
+                <input id="regEmailInput" type="email" name="email" autocomplete="username" placeholder="E-mail">
+                <div class="password-wrapper">
+                    <input id="regPasswordInput" type="password" name="password" autocomplete="new-password" placeholder="Wachtwoord (min. 6 tekens)">
+                    <button class="password-toggle" type="button" onclick="togglePassword('regPasswordInput')" aria-label="Toon wachtwoord"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                </div>
+                <button id="registerSubmit" type="submit" style="background: #16a34a; color: white;">Account aanmaken</button>
+                <button type="button" onclick="document.getElementById('loginModal').style.display='none'" style="background:transparent; color: var(--text-dim);">Annuleren</button>
+            </form>
         </div>
     </div>
 </div>

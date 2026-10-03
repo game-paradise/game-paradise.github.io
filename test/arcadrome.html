@@ -36,6 +36,44 @@
       display: block;
     }
 
+    /* 3. De subtiele Home-knop */
+    .pwa-back-button {
+      position: fixed;
+      top: env(safe-area-inset-top, 10px); 
+      left: env(safe-area-inset-left, 10px);
+      background: rgba(0, 0, 0, 0.2); /* Iets donkerder omdat embeds vaak licht zijn */
+      color: rgba(0, 0, 0, 0.7);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      text-decoration: none;
+      z-index: 999999;
+      cursor: pointer;
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      transition: all 0.2s ease;
+    }
+
+    /* Blauw bij klikken */
+    .pwa-back-button:active {
+      background: rgba(37, 99, 235, 0.5);
+      color: white;
+    }
+    }
+  </style>
+</head>
+<body>
+
+  <a href="/index.html" class="pwa-back-button">
+    <span>←</span> 
+    <span>Home</span>
+  </a>
+
   <iframe
     src="https://arcadrome.com/"
     allowfullscreen

@@ -183,6 +183,71 @@
             /* Admin knop zichtbaar houden op mobiel als de JS hem display block geeft */
             /* We hebben de regel die de knop verbergt hier verwijderd */
         }
+
+        /* Notice Banner voor Arcadrome */
+.notice-banner {
+    background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+    border: 1px solid #6366f1;
+    border-radius: 16px;
+    padding: 16px 20px;
+    margin-bottom: 25px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.25);
+}
+
+.notice-icon {
+    font-size: 32px;
+    flex-shrink: 0;
+}
+
+.notice-content {
+    flex: 1;
+}
+
+.notice-content h3 {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+    color: #a5b4fc;
+}
+
+.notice-content p {
+    margin: 0;
+    font-size: 14px;
+    color: #cbd5e1;
+    line-height: 1.4;
+}
+
+.notice-btn {
+    background: #6366f1;
+    color: #ffffff;
+    padding: 10px 18px;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 14px;
+    white-space: nowrap;
+    transition: background 0.2s, transform 0.2s;
+    display: inline-block;
+}
+
+.notice-btn:hover {
+    background: #4f46e5;
+    transform: translateY(-2px);
+}
+
+@media (max-width: 600px) {
+    .notice-banner {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    .notice-btn {
+        width: 100%;
+        text-align: center;
+    }
+}
     </style>
 </head>
 <body>
@@ -239,6 +304,15 @@
             <button id="authBtn" class="auth-btn">Inloggen</button>
         </div>
     </div>
+    <!-- Melding over Arcadrome -->
+<div class="notice-banner">
+    <div class="notice-icon">🚀</div>
+    <div class="notice-content">
+        <h3>Werken sommige games niet meer?</h3>
+        <p>Geen zorgen! Op Arcadrome vind je veel meer én betere werkende games.</p>
+    </div>
+    <a href="/arcadrome.html" class="notice-btn">Bekijk Arcadrome &rarr;</a>
+</div>
     <div id="gameGrid" class="game-grid">
         <div class="game-card" style="height:165px"><div class="skeleton"></div></div>
         <div class="game-card" style="height:165px"><div class="skeleton"></div></div>

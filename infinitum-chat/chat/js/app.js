@@ -52,6 +52,13 @@ function avatar(id, name, size = 40) {
   });
 }
 
+// avatar met presence-bolletje; de kleur wordt live bijgewerkt door renderPresence()
+function dotted(uid, name, size = 40) {
+  const d = h('i', { class: 'dot', 'data-uid': uid });
+  setDot(d);
+  return h('span', { class: 'av-wrap', style: `--s:${size}px` }, avatar(uid, name, size), d);
+}
+
 const tf = new Intl.DateTimeFormat('nl-NL', { hour: '2-digit', minute: '2-digit' });
 const df = new Intl.DateTimeFormat('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
 const dayKey = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -164,7 +171,10 @@ $('#aGoogle').addEventListener('click', async () => {
     $('#aErr').textContent = authErr(ex);
   }
 });
-$('#logoutBtn').addEventListener('click', () => signOut(auth));
+$('#logoutBtn').addEventListener('click', async () => {
+  await Promise.race([presenceGoOffline(), new Promise(r => setTimeout(r, 1500))]); // meteen offline tonen
+  signOut(auth);
+});
 
 // Maakt (atomair) profiel + unieke gebruikersnaam aan bij de eerste keer.
 async function ensureProfile(user) {
@@ -223,7 +233,7 @@ function startListeners() {
 
   S.unsub.friends = onSnapshot(query(collection(db, 'friendships'), where('users', 'array-contains', uid)), snap => {
     S.friendships = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    syncChatMeta();
+    syncChatMeta(); scheduleWatch();
     renderTabs(); scheduleSidebar();
     if (S.tab === 'friends') renderFriendList();
     if (S.tab === 'requests') renderRequestLists();
@@ -234,7 +244,7 @@ function startListeners() {
 
   S.unsub.servers = onSnapshot(query(collection(db, 'servers'), where('members', 'array-contains', uid)), snap => {
     S.servers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    scheduleSidebar();
+    scheduleSidebar(); scheduleWatch();
     if (S.activeServer && !serverInfo(S.activeServer)) {
       S.activeServer = null;
       if (S.tab === 'servers') showMain();
@@ -243,6 +253,8 @@ function startListeners() {
       if (old && serverInfo(S.chat.id)) old.replaceWith(buildHead('server', S.chat.id));
     }
   }, e => { console.error(e); toast(fbErr(e)); });
+
+  startPresence();
 }
 
 function syncChatMeta() {
@@ -256,8 +268,9 @@ function syncChatMeta() {
   }
 }
 
-function unsubChat() { S.unsub.chat?.(); S.unsub.chat = null; S.chat = null; }
+function unsubChat() { S.unsub.chat?.(); S.unsub.chat = null; S.chat = null; scheduleWatch(); }
 function teardown() {
+  stopPresence();
   unsubChat();
   for (const k of ['profile', 'friends', 'servers']) { S.unsub[k]?.(); S.unsub[k] = null; }
   Object.values(S.metaUnsub).forEach(u => u());
@@ -278,7 +291,7 @@ function renderTabs() {
 
 function renderUserCard() {
   const p = S.profile;
-  $('#meAvatar').replaceChildren(avatar(S.me.uid, p?.username, 46));
+  $('#meAvatar').replaceChildren(dotted(S.me.uid, p?.username, 46));
   $('#meName').textContent = p?.username || '…';
   const si = $('#meStatus');
   if (document.activeElement !== si) si.value = p?.status || '';
@@ -325,7 +338,7 @@ function renderSidebar() {
       class: 'item' + (S.activeDm === f.id && S.tab === 'dms' ? ' active' : ''),
       onclick: () => { S.activeDm = f.id; if (S.tab !== 'dms') { S.tab = 'dms'; renderTabs(); } renderSidebar(); showMain(); }
     },
-      avatar(otherId(f), otherName(f), 42),
+      dotted(otherId(f), otherName(f), 42),
       h('span', { class: 'item-text' }, h('b', { text: otherName(f) }), h('small', { text: preview }))));
   }
 }
@@ -357,15 +370,16 @@ function buildHead(type, id) {
 
   if (type === 'dm') {
     const i = dmInfo(id);
-    head.append(avatar(i.uid, i.name, 42), h('div', { class: 'grow' }, h('h2', { text: i.name }), h('small', { id: 'peerStatus' })));
+    head.append(dotted(i.uid, i.name, 42), h('div', { class: 'grow' }, h('h2', { text: i.name }), h('small', { id: 'peerStatus' })));
     getDoc(doc(db, 'users', i.uid)).then(s => {
-      const el = $('#peerStatus'); if (el && s.exists()) el.textContent = s.data().status || '';
+      const el = $('#peerStatus'); if (el && s.exists()) { el.dataset.st = s.data().status || ''; renderPresence(); }
     }).catch(() => {});
   } else {
     const s = serverInfo(id), owner = s.ownerId === S.me.uid;
     head.append(
       avatar(id, s.name, 42),
-      h('div', { class: 'grow' }, h('h2', { text: s.name }), h('small', { text: `${s.members.length} ${s.members.length === 1 ? 'lid' : 'leden'}` })),
+      h('div', { class: 'grow' }, h('h2', { text: s.name }), h('small', { id: 'srvMeta', text: srvMetaText(s) })),
+      h('button', { class: 'ghost sm', type: 'button', onclick: openMembers, text: 'Leden' }),
       h('button', {
         class: 'ghost sm', type: 'button', html: I.copy + '<span>Uitnodigingscode</span>',
         onclick: async () => { try { await navigator.clipboard.writeText(id); toast('Code gekopieerd — deel hem met vrienden.'); } catch { toast('Code: ' + id); } }
@@ -409,6 +423,7 @@ function openChat(type, id) {
   }, e => { console.error(e); toast(fbErr(e)); });
 
   if (matchMedia('(min-width: 801px)').matches) ta.focus();
+  scheduleWatch(); renderPresence();
 }
 
 /* Typen buiten de typbalk: de balk blijft met rust gelaten als je ernaast klikt,
@@ -523,8 +538,9 @@ function renderFriendList() {
   const fr = [...accepted()].sort((a, b) => otherName(a).localeCompare(otherName(b)));
   $('#friendCount').textContent = `Alle vrienden — ${fr.length}`;
   box.replaceChildren(...(fr.length ? fr.map(f => h('div', { class: 'row' },
-    avatar(otherId(f), otherName(f), 42),
-    h('span', { class: 'item-text' }, h('b', { text: otherName(f) })),
+    dotted(otherId(f), otherName(f), 42),
+    h('span', { class: 'item-text' }, h('b', { text: otherName(f) }),
+      h('small', { class: 'plabel', 'data-uid': otherId(f), text: LABEL[presState(otherId(f))] })),
     h('div', { class: 'row-actions' },
       h('button', {
         class: 'btn-ok', type: 'button', text: 'Bericht',
@@ -641,6 +657,275 @@ async function deleteServer(s) {
   try { await deleteDoc(doc(db, 'servers', s.id)); }
   catch (e) { toast(fbErr(e)); }
 }
+
+/* =====================  online / inactief / offline  =====================
+   - presence/{uid}          { state, lastSeen }   publiek leesbaar voor ingelogde gebruikers (per uid, niet opvraagbaar als lijst)
+   - presenceSettings/{uid}  { mode, until }       alleen jijzelf (handmatige status, until = 0 betekent voor altijd)
+   Schrijven gebeurt zuinig: alleen bij een echte statuswijziging (met minimale tussentijd) of als hartslag. */
+const HEARTBEAT = 120000;   // elke 2 min een hartslag zolang je online/inactief bent
+const MIN_GAP   = 20000;    // nooit vaker dan 1 write per 20 s (rules staan 15 s toe)
+const STALE     = 270000;   // geen hartslag in 4,5 min -> bij anderen offline
+const PEER_TTL  = 190000;   // andere tabbladen van jezelf (zelfde browser)
+const LABEL = { online: 'Online', idle: 'Inactief', dnd: 'Niet storen', offline: 'Offline' };
+const MODES = [
+  ['auto', 'Online', 'Automatisch: online als je de site bekijkt, inactief op de achtergrond'],
+  ['idle', 'Inactief', 'Je staat als inactief, ook als je de site bekijkt'],
+  ['dnd', 'Niet storen', 'Anderen zien dat je even niet gestoord wilt worden'],
+  ['invisible', 'Onzichtbaar', 'Je lijkt offline voor anderen']
+];
+const DURS = [[15, '15 minuten'], [60, '1 uur'], [480, '8 uur'], [1440, '24 uur'], [0, 'Voor altijd']];
+const MODE_KEYS = new Set(MODES.map(m => m[0]));
+
+const P = { data: {}, unsub: {} };   // presence van anderen
+const NAME = {};                     // uid -> gebruikersnaam (voor de ledenlijst)
+const pres = {
+  on: false, id: '', settings: { mode: 'auto', until: 0 }, peers: new Map(),
+  published: null, lastAt: 0, fails: 0, timer: 0, ping: 0, tick: 0, bc: null, unsubSet: null
+};
+let membersView = null, watchT = 0;
+
+/* --- eigen handmatige status --- */
+function activeManual() {
+  const s = pres.settings;
+  if (!s || !MODE_KEYS.has(s.mode) || s.mode === 'auto') return null;
+  if (s.until && s.until <= Date.now()) return null;   // verlopen -> weer automatisch
+  return s.mode;
+}
+const manualState = () => { const m = activeManual(); return m === 'invisible' ? 'offline' : m; };
+const manualExpiry = () => (activeManual() && pres.settings.until) || 0;
+
+/* --- weergave --- */
+function presState(uid) {
+  if (uid === S.me?.uid) return manualState() || 'online';
+  const p = P.data[uid];
+  if (!p || p.state === 'offline') return 'offline';
+  const ls = p.lastSeen?.toMillis?.();
+  if (ls && Date.now() - ls > STALE) return 'offline';
+  return p.state;
+}
+function setDot(d) { d.className = 'dot s-' + presState(d.dataset.uid); }
+function srvMetaText(s) {
+  const n = s.members.length, on = s.members.filter(u => presState(u) !== 'offline').length;
+  return `${n} ${n === 1 ? 'lid' : 'leden'} · ${on} online`;
+}
+function renderPresence() {
+  if (!S.me) return;
+  document.querySelectorAll('.dot[data-uid]').forEach(setDot);
+  document.querySelectorAll('.plabel[data-uid]').forEach(el => { el.textContent = LABEL[presState(el.dataset.uid)]; });
+  const c = S.chat;
+  if (c?.type === 'dm') {
+    const el = $('#peerStatus'), i = dmInfo(c.id);
+    if (el && i) el.textContent = [LABEL[presState(i.uid)], el.dataset.st].filter(Boolean).join(' · ');
+  } else if (c?.type === 'server') {
+    const el = $('#srvMeta'), s = serverInfo(c.id);
+    if (el && s) el.textContent = srvMetaText(s);
+  }
+  membersView?.render();
+}
+
+/* --- presence van anderen volgen: vrienden + de leden van de server die je nu open hebt --- */
+function scheduleWatch() { clearTimeout(watchT); watchT = setTimeout(syncPresenceWatch, 0); }
+function syncPresenceWatch() {
+  if (!S.me) return;
+  const want = new Set(accepted().map(otherId));
+  if (S.chat?.type === 'server') serverInfo(S.chat.id)?.members.forEach(u => want.add(u));
+  want.delete(S.me.uid);
+  for (const u of Object.keys(P.unsub)) {
+    if (!want.has(u)) { P.unsub[u](); delete P.unsub[u]; delete P.data[u]; }
+  }
+  for (const u of want) {
+    if (P.unsub[u]) continue;
+    P.unsub[u] = onSnapshot(doc(db, 'presence', u),
+      s => { P.data[u] = s.exists() ? s.data() : null; renderPresence(); }, () => {});
+  }
+  renderPresence();
+}
+
+/* --- eigen status publiceren (alleen de "leider"-tab schrijft, zodat meerdere tabs elkaar niet tegenwerken) --- */
+const isVisible = () => document.visibilityState === 'visible';
+function announce() { pres.bc?.postMessage({ id: pres.id, vis: isVisible() }); }
+function onPeer(e) {
+  const m = e.data;
+  if (!m?.id || m.id === pres.id) return;
+  if (m.bye) pres.peers.delete(m.id);
+  else {
+    const isNew = !pres.peers.has(m.id);
+    pres.peers.set(m.id, { vis: !!m.vis, t: Date.now() });
+    if (isNew) announce();
+  }
+  reconcile();
+}
+
+async function writeState(state) {
+  pres.published = state; pres.lastAt = Date.now();
+  try {
+    await setDoc(doc(db, 'presence', S.me.uid), { state, lastSeen: serverTimestamp() });
+    pres.fails = 0;
+  } catch (e) {
+    console.error(e);
+    pres.published = null; pres.fails++;
+    if (pres.fails === 3) toast(fbErr(e));
+    reconcile();   // opnieuw proberen na de minimale tussentijd
+  }
+}
+
+function reconcile() {
+  clearTimeout(pres.timer);
+  if (!pres.on || !S.me) return;
+  const now = Date.now(), vis = isVisible();
+  const live = [...pres.peers].filter(([, p]) => now - p.t < PEER_TTL);
+  const anyVis = vis || live.some(([, p]) => p.vis);
+  const pool = anyVis
+    ? [...(vis ? [pres.id] : []), ...live.filter(([, p]) => p.vis).map(([id]) => id)]
+    : [pres.id, ...live.map(([id]) => id)];
+  if (pool.sort()[0] !== pres.id) {                      // een andere tab regelt het schrijven
+    pres.published = null;
+    pres.timer = setTimeout(reconcile, 60000);
+    return;
+  }
+  const state = manualState() || (anyVis ? 'online' : 'idle');
+  const gap = pres.fails >= 3 ? HEARTBEAT : MIN_GAP;
+  let wait;
+  if (state !== pres.published) wait = pres.lastAt + gap - now;              // echte wijziging
+  else if (state === 'offline') wait = Infinity;                              // onzichtbaar: geen hartslag nodig
+  else wait = pres.lastAt + HEARTBEAT - now;                                  // hartslag
+  if (wait <= 0) { writeState(state); wait = state === 'offline' ? Infinity : HEARTBEAT; }
+  const exp = manualExpiry();
+  if (exp) wait = Math.min(wait, exp - now + 100);                            // handmatige status verloopt
+  if (wait < Infinity) pres.timer = setTimeout(reconcile, Math.max(wait, 500));
+}
+
+const onVis = () => { announce(); reconcile(); renderPresence(); };
+const onHide = () => pres.bc?.postMessage({ id: pres.id, bye: true });
+const onShow = (e) => { if (e.persisted) { pres.published = null; announce(); reconcile(); } };
+
+function startPresence() {
+  if (pres.on || !S.me) return;
+  Object.assign(pres, {
+    on: true, id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    settings: { mode: 'auto', until: 0 }, peers: new Map(), published: null, lastAt: 0, fails: 0
+  });
+  try { pres.bc = new BroadcastChannel('infinitum-presence-' + S.me.uid); pres.bc.onmessage = onPeer; }
+  catch { pres.bc = null; }
+  // pas schrijven nadat je instellingen binnen zijn (anders zou "onzichtbaar" even als online lekken)
+  pres.unsubSet = onSnapshot(doc(db, 'presenceSettings', S.me.uid),
+    s => { pres.settings = s.data() || { mode: 'auto', until: 0 }; renderPresence(); reconcile(); },
+    () => reconcile());
+  document.addEventListener('visibilitychange', onVis);
+  window.addEventListener('pagehide', onHide);
+  window.addEventListener('pageshow', onShow);
+  announce();
+  pres.ping = setInterval(announce, 60000);
+  pres.tick = setInterval(renderPresence, 30000);        // verlopen hartslagen -> offline tonen
+}
+
+function stopPresence() {
+  pres.on = false;
+  clearTimeout(pres.timer); clearInterval(pres.ping); clearInterval(pres.tick);
+  document.removeEventListener('visibilitychange', onVis);
+  window.removeEventListener('pagehide', onHide);
+  window.removeEventListener('pageshow', onShow);
+  onHide();
+  try { pres.bc?.close(); } catch {}
+  pres.bc = null; pres.peers = new Map();
+  pres.unsubSet?.(); pres.unsubSet = null;
+  clearTimeout(watchT);
+  for (const u of Object.keys(P.unsub)) { P.unsub[u](); delete P.unsub[u]; }
+  P.data = {};
+  for (const k of Object.keys(NAME)) delete NAME[k];
+  membersView = null;
+}
+
+async function presenceGoOffline() {
+  if (!pres.on || !S.me) return;
+  const uid = S.me.uid;
+  stopPresence();
+  try { await setDoc(doc(db, 'presence', uid), { state: 'offline', lastSeen: serverTimestamp() }); } catch {}
+}
+
+/* --- eigen status kiezen (klik op je avatar linksboven) --- */
+function statusSummary() {
+  const m = activeManual();
+  if (!m) return 'Nu: automatisch (online als je de site bekijkt, inactief op de achtergrond).';
+  const u = pres.settings.until, name = MODES.find(x => x[0] === m)[1];
+  if (!u) return `Nu: ${name}, voor altijd.`;
+  const d = new Date(u);
+  return `Nu: ${name} tot ${dayKey(d) === dayKey(new Date()) ? '' : 'morgen '}${tf.format(d)}.`;
+}
+
+function openStatusPicker() {
+  if (!S.me) return;
+  let sel = activeManual() || 'auto';
+  const list = h('div');
+  const select = h('select', { class: 'inp' }, ...DURS.map(([m, t]) => h('option', { value: m, text: t })));
+  select.value = '60';
+  const durRow = h('label', { class: 'field' }, h('span', { text: 'Hoelang?' }), select);
+  const err = h('p', { class: 'err' });
+  const render = () => {
+    list.replaceChildren(...MODES.map(([k, t, d]) => h('button', {
+      class: 'item' + (sel === k ? ' active' : ''), type: 'button', onclick: () => { sel = k; render(); }
+    },
+      h('i', { class: 'dot inl s-' + (k === 'auto' ? 'online' : k === 'invisible' ? 'offline' : k) }),
+      h('span', { class: 'item-text' }, h('b', { text: t }), h('small', { text: d })))));
+    durRow.hidden = sel === 'auto';
+  };
+  const go = async () => {
+    const mins = +select.value;
+    const until = sel === 'auto' || !mins ? 0 : Date.now() + mins * 60000;
+    try { await setDoc(doc(db, 'presenceSettings', S.me.uid), { mode: sel, until }); closeDialog(); }
+    catch (e) { err.textContent = fbErr(e); }
+  };
+  openDialog(
+    h('h3', { text: 'Jouw status' }),
+    h('p', { class: 'sub', text: statusSummary() }),
+    list, durRow, err,
+    h('div', { class: 'dlg-actions' },
+      h('button', { class: 'ghost', type: 'button', onclick: closeDialog, text: 'Annuleren' }),
+      h('button', { class: 'glow', type: 'button', onclick: go, text: 'Opslaan' })));
+  render();
+}
+
+const meAv = $('#meAvatar');
+meAv.title = 'Status wijzigen'; meAv.setAttribute('role', 'button'); meAv.tabIndex = 0;
+meAv.addEventListener('click', openStatusPicker);
+meAv.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openStatusPicker(); } });
+
+/* --- ledenlijst van de open server --- */
+async function nameOf(uid) {
+  if (NAME[uid]) return NAME[uid];
+  if (uid === S.me.uid) return S.profile?.username || 'Jij';
+  const f = accepted().find(x => x.users.includes(uid));
+  if (f?.names?.[uid]) return (NAME[uid] = f.names[uid]);
+  try { const d = await getDoc(doc(db, 'users', uid)); return (NAME[uid] = d.data()?.username || 'Onbekend'); }
+  catch { return 'Onbekend'; }
+}
+
+async function openMembers() {
+  const c = S.chat; if (c?.type !== 'server') return;
+  const s0 = serverInfo(c.id); if (!s0) return;
+  const rank = { online: 0, dnd: 1, idle: 2, offline: 3 };
+  const list = h('div', { class: 'mlist' });
+  const render = () => {
+    const s = serverInfo(c.id); if (!s) return;
+    const rows = s.members.map(u => ({ u, n: NAME[u] || (u === S.me.uid ? S.profile?.username : '') || '…', st: presState(u) }))
+      .sort((a, b) => rank[a.st] - rank[b.st] || a.n.localeCompare(b.n));
+    list.replaceChildren(...rows.map(r => h('div', { class: 'row' },
+      dotted(r.u, r.n, 40),
+      h('span', { class: 'item-text' },
+        h('b', { text: r.n + (r.u === S.me.uid ? ' (jij)' : '') }),
+        h('small', { text: LABEL[r.st] })))));
+  };
+  membersView = { render };
+  openDialog(
+    h('h3', { text: 'Leden' }),
+    h('p', { class: 'sub', text: s0.name }),
+    list,
+    h('div', { class: 'dlg-actions' }, h('button', { class: 'ghost', type: 'button', onclick: closeDialog, text: 'Sluiten' })));
+  render();
+  await Promise.all(s0.members.map(nameOf));
+  if (membersView) render();
+}
+dlg.addEventListener('close', () => { membersView = null; });
 
 /* =====================  premium-knop  ===================== */
 $('#premiumBtn').addEventListener('click', () => {

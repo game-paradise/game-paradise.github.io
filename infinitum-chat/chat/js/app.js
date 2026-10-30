@@ -1,7 +1,7 @@
 import { auth, db, googleProvider } from './firebase.js';
 import {
   onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  signInWithPopup, signOut
+  signInWithPopup, signInWithRedirect, signOut
 } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
 import {
   collection, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, query, where, orderBy,
@@ -70,10 +70,10 @@ function toast(text) {
 
 function fbErr(e) {
   const c = e?.code || '';
-  if (c.includes('permission-denied')) return 'Geen toestemming — controleer of je de Firestore-regels hebt geplaatst.';
+  if (c.includes('permission-denied')) return 'Firestore weigert toegang (permission-denied). Plak de inhoud van firestore.rules bij Firestore → Regels en klik op Publiceren.';
+  if (c.includes('not-found')) return 'Je Firestore-database bestaat nog niet (not-found). Maak hem aan in de Firebase Console: Build → Firestore Database → Database maken.';
   if (c.includes('unavailable')) return 'Geen verbinding met Firebase.';
-  if (c.includes('not-found')) return 'Niet gevonden.';
-  return e?.message || 'Er ging iets mis.';
+  return (e?.message || 'Er ging iets mis.') + (c ? ` (${c})` : '');
 }
 function authErr(e) {
   switch (e?.code) {
@@ -85,6 +85,8 @@ function authErr(e) {
     case 'auth/invalid-email': return 'Dit e-mailadres klopt niet.';
     case 'auth/too-many-requests': return 'Te veel pogingen. Probeer het later opnieuw.';
     case 'auth/operation-not-allowed': return 'Deze inlogmethode staat nog uit in de Firebase Console (Authentication → Sign-in method).';
+    case 'auth/unauthorized-domain': return `Het domein "${location.hostname}" staat niet bij de toegestane domeinen. Open de site via localhost, of voeg dit domein toe in Firebase Console → Authentication → Instellingen → Geautoriseerde domeinen.`;
+    case 'auth/network-request-failed': return 'Netwerkfout — controleer je internetverbinding.';
     case 'auth/popup-closed-by-user':
     case 'auth/cancelled-popup-request': return '';
     default: return fbErr(e);
@@ -133,9 +135,14 @@ $('#authForm').addEventListener('submit', async (e) => {
     if (mode === 'signup') {
       const name = $('#aUser').value.trim();
       if (!/^[A-Za-z0-9_.]{2,20}$/.test(name)) throw { code: 'x', message: 'Gebruikersnaam: 2–20 tekens, alleen letters, cijfers, _ en .' };
-      const taken = await getDoc(doc(db, 'usernames', name.toLowerCase()));
-      if (taken.exists()) throw { code: 'x', message: 'Deze gebruikersnaam is al bezet.' };
-      S.pendingName = name;
+      try {
+        const taken = await getDoc(doc(db, 'usernames', name.toLowerCase()));
+        if (taken.exists()) throw { code: 'x', message: 'Deze gebruikersnaam is al bezet.' };
+      } catch (pre) {
+        if (pre.code === 'x') throw pre;
+        console.warn('Gebruikersnaam-check overgeslagen:', pre); // Firestore-problemen worden hierna netjes gemeld
+      }
+      S.pendingName = { email: email.toLowerCase(), name };
       await createUserWithEmailAndPassword(auth, email, pass);
     } else {
       await signInWithEmailAndPassword(auth, email, pass);
@@ -147,8 +154,15 @@ $('#authForm').addEventListener('submit', async (e) => {
 });
 
 $('#aGoogle').addEventListener('click', async () => {
+  $('#aErr').textContent = '';
   try { await signInWithPopup(auth, googleProvider); }
-  catch (ex) { $('#aErr').textContent = authErr(ex); }
+  catch (ex) {
+    if (ex.code === 'auth/popup-blocked') {
+      try { await signInWithRedirect(auth, googleProvider); return; } catch (e2) { ex = e2; }
+    }
+    console.error(ex);
+    $('#aErr').textContent = authErr(ex);
+  }
 });
 $('#logoutBtn').addEventListener('click', () => signOut(auth));
 
@@ -156,20 +170,26 @@ $('#logoutBtn').addEventListener('click', () => signOut(auth));
 async function ensureProfile(user) {
   const ref = doc(db, 'users', user.uid);
   if ((await getDoc(ref)).exists()) return;
-  let base = (S.pendingName || user.displayName || (user.email || 'user').split('@')[0] || 'user')
+
+  const pend = S.pendingName && S.pendingName.email === (user.email || '').toLowerCase() ? S.pendingName.name : null;
+  let base = (pend || user.displayName || (user.email || 'user').split('@')[0] || 'user')
     .replace(/[^A-Za-z0-9_.]/g, '').slice(0, 16);
   if (base.length < 2) base = 'user' + Math.floor(Math.random() * 90 + 10);
+
   let name = base;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     const lower = name.toLowerCase();
+    if ((await getDoc(doc(db, 'usernames', lower))).exists()) {
+      name = base.slice(0, 15) + Math.floor(Math.random() * 900 + 100);
+      continue;
+    }
     const batch = writeBatch(db);
     batch.set(doc(db, 'usernames', lower), { uid: user.uid });
     batch.set(ref, { username: name, usernameLower: lower, status: '', createdAt: serverTimestamp() });
-    try { await batch.commit(); S.pendingName = null; return; }
-    catch (e) {
-      if (e.code !== 'permission-denied') throw e;
-      name = base.slice(0, 15) + Math.floor(Math.random() * 900 + 100);
-    }
+    await batch.commit(); // echte fouten (regels / database ontbreekt) komen hier naar boven
+    S.pendingName = null;
+    if (pend && name.toLowerCase() !== pend.toLowerCase()) toast(`"${pend}" was al bezet — je bent ${name} geworden.`);
+    return;
   }
   throw new Error('Kon geen vrije gebruikersnaam vinden.');
 }
@@ -390,6 +410,28 @@ function openChat(type, id) {
 
   if (matchMedia('(min-width: 801px)').matches) ta.focus();
 }
+
+/* Typen buiten de typbalk: de balk blijft met rust gelaten als je ernaast klikt,
+   maar zodra je begint te typen springt de cursor automatisch terug in de chatbalk.
+   Niet als je al in een ander invoerveld zit (status, zoeken, dialoog, enz.). */
+document.addEventListener('keydown', e => {
+  if (e.defaultPrevented || e.isComposing) return;
+  const ta = $('#msgInput');
+  if (!S.chat || !ta || !ta.isConnected || $('#app').hidden) return;
+  if (document.activeElement === ta) return;
+  if (document.querySelector('dialog[open]')) return;
+
+  const a = document.activeElement;
+  if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+
+  const paste = (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'v';
+  const typing = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
+  if (!paste && !typing) return;
+  // spatie activeert een knop die focus heeft; die niet afpakken
+  if (e.key === ' ' && a && /^(BUTTON|A|SUMMARY)$/.test(a.tagName)) return;
+
+  ta.focus(); // geen preventDefault: het teken landt hierna vanzelf in de balk
+});
 
 function renderMessages(msgs) {
   const list = $('#msgList'); if (!list || !S.chat) return;

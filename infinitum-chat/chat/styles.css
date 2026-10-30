@@ -332,3 +332,47 @@ dialog::backdrop { background: rgba(2, 4, 14, .66); backdrop-filter: blur(5px); 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* ---------- online / inactief / offline ---------- */
+:root { --on: #43d17a; --idle: #ff9f1c; --dnd: #ff4d5e; --off: #7a80a6; }
+
+.av-wrap { position: relative; display: inline-block; flex: none; line-height: 0; }
+.dot {
+  position: absolute; right: -3px; bottom: -3px;
+  width: max(13px, calc(var(--s, 40px) * .32)); height: max(13px, calc(var(--s, 40px) * .32));
+  border-radius: 50%; border: 3px solid #0b1030; background: var(--off);
+  transition: background .3s;
+}
+.sdot { display: inline-block; flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--off); transition: background .3s; }
+.dot.s-online, .sdot.s-online { background: var(--on); }
+.dot.s-idle,   .sdot.s-idle   { background: var(--idle); }
+.dot.s-dnd,    .sdot.s-dnd    { background: var(--dnd); }
+.dot.s-offline, .sdot.s-offline { background: var(--off); }
+
+/* gekleurde tekstlabels */
+.pbadge, .plabel { font-size: 13px; font-weight: 600; color: var(--off); }
+.pbadge { flex: none; margin-left: 4px; }
+.pbadge.s-online, .plabel.s-online { color: var(--on); }
+.pbadge.s-idle,   .plabel.s-idle   { color: var(--idle); }
+.pbadge.s-dnd,    .plabel.s-dnd    { color: var(--dnd); }
+.chat-head small .sdot { margin-right: 7px; vertical-align: -1px; }
+
+/* eigen status-knop onder je naam */
+.status-pill {
+  display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;
+  margin: 4px 0 3px; padding: 4px 10px 4px 9px;
+  border: 1px solid var(--line); border-radius: 20px;
+  background: rgba(255, 255, 255, .06);
+  font-size: 13px; font-weight: 600; color: var(--text);
+  transition: background .15s;
+}
+.status-pill:hover { background: rgba(255, 255, 255, .14); }
+.status-pill::after {
+  content: ""; width: 6px; height: 6px; margin: -3px 0 0 2px;
+  border: solid var(--muted); border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+
+.mlist { max-height: 50vh; overflow: auto; margin-bottom: 12px; }
+.mlist .row { max-width: none; }
+select.inp { color-scheme: dark; margin-bottom: 4px; }
+.dlg-in .item { margin-bottom: 4px; }

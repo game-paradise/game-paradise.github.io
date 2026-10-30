@@ -50,6 +50,34 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ---------- online / inactief / offline ----------
+    function validPresence() {
+      return request.resource.data.keys().hasOnly(['state', 'lastSeen'])
+        && request.resource.data.state in ['online', 'idle', 'dnd', 'offline']
+        && request.resource.data.lastSeen == request.time;
+    }
+
+    // Per uid op te halen (niet als lijst). Alleen jezelf mag schrijven, en maximaal 1x per 15 seconden.
+    match /presence/{uid} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if isSelf(uid) && validPresence();
+      allow update: if isSelf(uid) && validPresence()
+        && request.time > resource.data.lastSeen + duration.value(15, 's');
+      allow delete: if false;
+    }
+
+    // Je eigen handmatige status (until = 0 betekent voor altijd). Alleen jijzelf.
+    match /presenceSettings/{uid} {
+      allow read: if isSelf(uid);
+      allow create, update: if isSelf(uid)
+        && request.resource.data.keys().hasOnly(['mode', 'until'])
+        && request.resource.data.mode in ['auto', 'idle', 'dnd', 'invisible']
+        && request.resource.data.until is number
+        && request.resource.data.until >= 0;
+      allow delete: if false;
+    }
+
     // ---------- vriendschappen + verzoeken (id = uidA_uidB) ----------
     match /friendships/{pairId} {
       allow read: if signedIn() && request.auth.uid in resource.data.users;

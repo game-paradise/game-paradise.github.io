@@ -339,7 +339,8 @@ function renderSidebar() {
       onclick: () => { S.activeDm = f.id; if (S.tab !== 'dms') { S.tab = 'dms'; renderTabs(); } renderSidebar(); showMain(); }
     },
       dotted(otherId(f), otherName(f), 42),
-      h('span', { class: 'item-text' }, h('b', { text: otherName(f) }), h('small', { text: preview }))));
+      h('span', { class: 'item-text' }, h('b', { text: otherName(f) }), h('small', { text: preview })),
+      pbadge(otherId(f))));
   }
 }
 
@@ -704,6 +705,9 @@ function presState(uid) {
   return p.state;
 }
 function setDot(d) { d.className = 'dot s-' + presState(d.dataset.uid); }
+const sIcon = (st) => h('i', { class: 'sdot s-' + st });   // simpel gekleurd rondje
+function pbadge(uid) { const st = presState(uid); return h('span', { class: 'pbadge s-' + st, 'data-uid': uid, text: LABEL[st] }); }
+const ownLabel = () => activeManual() === 'invisible' ? 'Onzichtbaar' : LABEL[presState(S.me.uid)];
 function srvMetaText(s) {
   const n = s.members.length, on = s.members.filter(u => presState(u) !== 'offline').length;
   return `${n} ${n === 1 ? 'lid' : 'leden'} · ${on} online`;
@@ -711,11 +715,24 @@ function srvMetaText(s) {
 function renderPresence() {
   if (!S.me) return;
   document.querySelectorAll('.dot[data-uid]').forEach(setDot);
-  document.querySelectorAll('.plabel[data-uid]').forEach(el => { el.textContent = LABEL[presState(el.dataset.uid)]; });
+  for (const sel of ['.pbadge', '.plabel']) {
+    document.querySelectorAll(sel + '[data-uid]').forEach(el => {
+      const st = presState(el.dataset.uid);
+      el.className = sel.slice(1) + ' s-' + st; el.textContent = LABEL[st];
+    });
+  }
+  const pill = $('#statusBtn');
+  if (pill) {
+    pill.replaceChildren(sIcon(presState(S.me.uid)), ownLabel());
+    pill.title = statusSummary();
+  }
   const c = S.chat;
   if (c?.type === 'dm') {
     const el = $('#peerStatus'), i = dmInfo(c.id);
-    if (el && i) el.textContent = [LABEL[presState(i.uid)], el.dataset.st].filter(Boolean).join(' · ');
+    if (el && i) {
+      const st = presState(i.uid);
+      el.replaceChildren(sIcon(st), [LABEL[st], el.dataset.st].filter(Boolean).join(' · '));
+    }
   } else if (c?.type === 'server') {
     const el = $('#srvMeta'), s = serverInfo(c.id);
     if (el && s) el.textContent = srvMetaText(s);
@@ -865,7 +882,7 @@ function openStatusPicker() {
     list.replaceChildren(...MODES.map(([k, t, d]) => h('button', {
       class: 'item' + (sel === k ? ' active' : ''), type: 'button', onclick: () => { sel = k; render(); }
     },
-      h('i', { class: 'dot inl s-' + (k === 'auto' ? 'online' : k === 'invisible' ? 'offline' : k) }),
+      sIcon(k === 'auto' ? 'online' : k === 'invisible' ? 'offline' : k),
       h('span', { class: 'item-text' }, h('b', { text: t }), h('small', { text: d })))));
     durRow.hidden = sel === 'auto';
   };
@@ -885,10 +902,9 @@ function openStatusPicker() {
   render();
 }
 
-const meAv = $('#meAvatar');
-meAv.title = 'Status wijzigen'; meAv.setAttribute('role', 'button'); meAv.tabIndex = 0;
-meAv.addEventListener('click', openStatusPicker);
-meAv.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openStatusPicker(); } });
+// status-knop onder je naam (linksboven)
+const statusBtn = h('button', { class: 'status-pill', id: 'statusBtn', type: 'button', onclick: openStatusPicker });
+$('#meName').after(statusBtn);
 
 /* --- ledenlijst van de open server --- */
 async function nameOf(uid) {
@@ -913,7 +929,7 @@ async function openMembers() {
       dotted(r.u, r.n, 40),
       h('span', { class: 'item-text' },
         h('b', { text: r.n + (r.u === S.me.uid ? ' (jij)' : '') }),
-        h('small', { text: LABEL[r.st] })))));
+        h('small', { class: 'plabel s-' + r.st, text: LABEL[r.st] })))));
   };
   membersView = { render };
   openDialog(

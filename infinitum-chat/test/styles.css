@@ -544,3 +544,9 @@ dialog.crop-dlg { width: min(540px, 94vw); }
 /* profielfoto in de zijbalk is klikbaar (instelbaar) */
 :root[data-pfclick="1"] #sideList .item .avatar[data-uid] { cursor: pointer; transition: box-shadow .15s; }
 :root[data-pfclick="1"] #sideList .item .avatar[data-uid]:hover { box-shadow: 0 0 0 2px rgba(124, 92, 255, .85); }
+
+/* ===== leesbewijzen (oogje onder je laatste bericht) ===== */
+.receipt { min-height: 0; }
+.rcpt { display: inline-flex; align-items: center; gap: 4px; margin: 3px 2px 0; font-size: 12px; font-weight: 600; color: var(--muted); animation: pop .2s ease both; }
+.rcpt-ic { display: inline-flex; width: 15px; height: 15px; }
+.rcpt-ic svg { width: 100%; height: 100%; }

@@ -561,3 +561,52 @@ dialog.crop-dlg { width: min(540px, 94vw); }
 .badge .bd-ic svg { width: 100%; height: 100%; }
 .badge b { font-weight: 600; }
 .badge small { color: var(--muted); font-size: 12px; }
+
+/* =====================  rode teller (ongelezen berichten / aanvragen)  ===================== */
+.unread {
+  display: inline-grid; place-items: center; flex: none;
+  min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 10px; background: #ff3b4e; color: #fff;
+  font: 700 12px/1 var(--font); letter-spacing: 0;
+  box-shadow: 0 0 0 2px var(--ring, #0c1028);
+}
+.tab .unread { margin-left: 8px; }
+.premium { position: relative; }
+.premium .unread { position: absolute; top: -8px; right: -8px; }
+.item.has-unread .item-text b { font-weight: 800; }
+.item.has-unread .item-text small { color: var(--text); }
+
+/* =====================  abonnementen vergelijken  ===================== */
+dialog.plans { width: min(780px, 96vw); }
+.plan-status { margin: 0 0 14px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--soft, rgba(255, 255, 255, .06)); font-size: 14px; }
+.plan-status.ok   { border-color: color-mix(in srgb, var(--on) 60%, transparent); }
+.plan-status.pend { border-color: color-mix(in srgb, var(--idle) 60%, transparent); }
+.plan-status.bad  { border-color: color-mix(in srgb, var(--dnd) 60%, transparent); }
+.plan-scroll { overflow-x: auto; border-radius: 14px; }
+.plan-grid {
+  display: grid; min-width: 520px;
+  grid-template-columns: minmax(150px, 1.5fr) repeat(3, minmax(100px, 1fr));
+  border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+}
+.plan-grid > * { padding: 10px 8px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: center; text-align: center; }
+.plan-grid > .pg-h { flex-direction: column; gap: 4px; padding: 14px 8px 12px; }
+.pg-ic { width: 34px; height: 34px; }
+.pg-h b { font-size: 14px; }
+.pg-h small { color: var(--muted); font-size: 12px; min-height: 1em; }
+.pg-f { justify-content: flex-start !important; text-align: left !important; padding-left: 14px !important; font-size: 14px; }
+.pg-c svg { width: 20px; height: 20px; }
+.pg-c.yes { color: var(--on); }
+.pg-c.no  { color: var(--dnd); opacity: .8; }
+.pg-c.txt { font-size: 13px; font-weight: 600; }
+.plan-grid .cur { background: color-mix(in srgb, var(--p) 16%, transparent); }
+.plan-grid > .pg-a { border-bottom: 0; flex-direction: column; gap: 6px; padding: 14px 8px; }
+.pg-tag { font-size: 12px; font-weight: 700; color: var(--muted); }
+.pg-tag.ok { color: var(--on); }
+.pg-pend { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.linkish { background: none; border: 0; padding: 2px; color: var(--muted); font: 600 12px var(--font); text-decoration: underline; cursor: pointer; }
+.linkish:hover { color: var(--text); }
+.plan-how { margin: 14px 2px 0; font-size: 13px; color: var(--muted); }
+.plans-sec { margin: 22px 0 10px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.plan-req { max-width: none; }
+.plan-req .row-actions { flex-wrap: wrap; justify-content: flex-end; }
+:root[data-theme="light"] .plan-status { background: var(--soft); }

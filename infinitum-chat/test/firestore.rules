@@ -131,6 +131,12 @@ service cloud.firestore {
       allow delete: if signedIn() && request.auth.uid in resource.data.users;
     }
 
+    // ---------- badges (definities + wie ze heeft; alleen te wijzigen via de Firebase Console) ----------
+    match /badges/{badgeId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     // ---------- app-instellingen (alleen te wijzigen via de Firebase Console) ----------
     match /config/{docId} {
       allow read: if signedIn();

@@ -1858,12 +1858,12 @@ function stopUnread() {
    - Prijzen (optioneel): Firestore -> config -> plans { plusPrice, primePrice }
    - Aanvragen: Firestore -> subscriptions -> <uid> { username, tier, status: pending | approved | rejected, ... }
    - Moderators = de uid's in het veld `users` van het badge-document met id `moderator`.
-   - Admins = de uid's in het veld `users` van het badge-document met id `admin` (kunnen alles van een moderator + abonnees beheren + de tabel aanpassen).
+   - Admins = dezelfde uid's als de moderators (badge-document `moderator`): beoordelen, abonnees beheren, de tabel aanpassen, eigen aanvraag goedkeuren.
    - Besluiten (goedkeuren, afwijzen, direct wijzigen) komen in subscriptions/<uid> te staan, met een optioneel bericht in `note`. */
 const TIER_ORDER = ['free', 'plus', 'prime'];
 const hasBadgeUser = (id) => !!S.me && BADGES.some(b => b.id === id && Array.isArray(b.users) && b.users.includes(S.me.uid));
-const isAdmin = () => hasBadgeUser('admin');
-const isMod = () => isAdmin() || hasBadgeUser('moderator');   // moderator of admin
+const isAdmin = () => hasBadgeUser('moderator') || hasBadgeUser('admin');   // de moderator-badge is de admin-badge
+const isMod = isAdmin;
 const othersPending = () => SUB.pending.filter(r => r.uid !== S.me?.uid || isAdmin());   // alleen een admin mag zijn eigen aanvraag goedkeuren
 
 function renderPremiumBadge() {

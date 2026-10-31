@@ -27,11 +27,28 @@ service cloud.firestore {
         && name.matches('^[a-z0-9_.]{2,20}$')
         && request.resource.data.keys().hasOnly(['uid'])
         && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if false;
+      allow update: if false;
+      // je mag je eigen oude naam vrijgeven bij het wijzigen van je gebruikersnaam
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
     // ---------- profielen ----------
     match /users/{uid} {
+      // gebruikersnaam wijzigen: hooguit 1x per 7 dagen, en de nieuwe naam moet van jou zijn
+      function nameOk() {
+        let d = request.resource.data;
+        return d.username == resource.data.username
+          ? (d.usernameLower == resource.data.usernameLower
+              && d.get('usernameChangedAt', null) == resource.data.get('usernameChangedAt', null))
+          : (d.username is string
+              && d.username.size() >= 2 && d.username.size() <= 20
+              && d.username.matches('^[A-Za-z0-9_.]+$')
+              && d.usernameLower == d.username.lower()
+              && d.usernameChangedAt == request.time
+              && request.time > resource.data.get('usernameChangedAt', timestamp.value(0)) + duration.value(7, 'd')
+              && getAfter(/databases/$(database)/documents/usernames/$(d.usernameLower)).data.uid == uid);
+      }
+
       allow read: if signedIn();
       allow create: if isSelf(uid)
         && request.resource.data.keys().hasOnly(['username', 'usernameLower', 'status', 'createdAt'])
@@ -43,10 +60,20 @@ service cloud.firestore {
         && request.resource.data.status.size() <= 40
         && request.resource.data.createdAt == request.time
         && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.usernameLower)).data.uid == uid;
+      // status, bio, profielfoto, banner en links mogen door jezelf aangepast worden
       allow update: if isSelf(uid)
-        && changed(['status'])
+        && changed(['status', 'bio', 'avatar', 'banner', 'links', 'username', 'usernameLower', 'usernameChangedAt'])
+        && nameOk()
         && request.resource.data.status is string
-        && request.resource.data.status.size() <= 40;
+        && request.resource.data.status.size() <= 40
+        && request.resource.data.get('bio', '') is string
+        && request.resource.data.get('bio', '').size() <= 200
+        && request.resource.data.get('avatar', '') is string
+        && request.resource.data.get('avatar', '').size() <= 40000
+        && request.resource.data.get('banner', '') is string
+        && request.resource.data.get('banner', '').size() <= 150000
+        && request.resource.data.get('links', []) is list
+        && request.resource.data.get('links', []).size() <= 6;
       allow delete: if false;
     }
 
@@ -104,6 +131,17 @@ service cloud.firestore {
       allow delete: if signedIn() && request.auth.uid in resource.data.users;
     }
 
+    // ---------- app-instellingen (alleen te wijzigen via de Firebase Console) ----------
+    match /config/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    function validTyping() {
+      return request.resource.data.keys().hasOnly(['at'])
+        && request.resource.data.at == request.time;
+    }
+
     // ---------- DM's ----------
     match /chats/{chatId} {
       allow read: if isFriendChat(chatId);
@@ -113,6 +151,15 @@ service cloud.firestore {
         && request.resource.data.lastText is string
         && request.resource.data.lastText.size() <= 80
         && request.resource.data.lastAt == request.time;
+
+      // typ-indicator: max. 1 update per 2 seconden, alleen jezelf
+      match /typing/{uid} {
+        allow read: if isFriendChat(chatId);
+        allow create: if isFriendChat(chatId) && isSelf(uid) && validTyping();
+        allow update: if isFriendChat(chatId) && isSelf(uid) && validTyping()
+          && request.time > resource.data.at + duration.value(2, 's');
+        allow delete: if false;
+      }
 
       match /messages/{mid} {
         allow read: if isFriendChat(chatId);
@@ -166,6 +213,14 @@ service cloud.firestore {
         );
 
       allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+
+      match /typing/{uid} {
+        allow read: if signedIn() && request.auth.uid in serverDoc().members;
+        allow create: if isSelf(uid) && request.auth.uid in serverDoc().members && validTyping();
+        allow update: if isSelf(uid) && request.auth.uid in serverDoc().members && validTyping()
+          && request.time > resource.data.at + duration.value(2, 's');
+        allow delete: if false;
+      }
 
       match /messages/{mid} {
         allow read: if signedIn() && request.auth.uid in serverDoc().members;

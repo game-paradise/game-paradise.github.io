@@ -550,3 +550,14 @@ dialog.crop-dlg { width: min(540px, 94vw); }
 .rcpt { display: inline-flex; align-items: center; gap: 4px; margin: 3px 2px 0; font-size: 12px; font-weight: 600; color: var(--muted); animation: pop .2s ease both; }
 .rcpt-ic { display: inline-flex; width: 15px; height: 15px; }
 .rcpt-ic svg { width: 100%; height: 100%; }
+
+/* ===== badges op het profiel ===== */
+.badge { --c: #7c5cff; display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 20px; font-size: 13px;
+  border: 1px solid var(--line); background: var(--soft); cursor: default; }
+@supports (background: color-mix(in srgb, red 10%, transparent)) {
+  .badge { border-color: color-mix(in srgb, var(--c) 55%, transparent); background: color-mix(in srgb, var(--c) 16%, transparent); }
+}
+.badge .bd-ic { display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--c); font-size: 14px; line-height: 1; }
+.badge .bd-ic svg { width: 100%; height: 100%; }
+.badge b { font-weight: 600; }
+.badge small { color: var(--muted); font-size: 12px; }

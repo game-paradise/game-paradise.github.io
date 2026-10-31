@@ -134,6 +134,9 @@ const S = {
   metaSeen: {}, reqSeen: null
 };
 
+/* typ-indicator: staat aan tenzij config/features.typingIndicators op false staat */
+const TY = { enabled: true, ttl: 6000, every: 3000 };
+
 const pairId = (a, b) => [a, b].sort().join('_');
 const accepted = () => S.friendships.filter(f => f.status === 'accepted');
 const incoming = () => S.friendships.filter(f => f.status === 'pending' && f.requester !== S.me.uid);
@@ -280,6 +283,12 @@ function startListeners() {
     }
   }, e => { console.error(e); toast(fbErr(e)); });
 
+  // noodschakelaar: Firestore -> config -> features -> typingIndicators (true/false)
+  S.unsub.config = onSnapshot(doc(db, 'config', 'features'), s => {
+    TY.enabled = s.exists() ? s.data().typingIndicators !== false : true;
+    if (S.chat) { TY.enabled ? startTypingWatch() : stopTypingWatch(); renderTyping(); }
+  }, () => { TY.enabled = false; stopTypingWatch(); renderTyping(); });
+
   startPresence();
 }
 
@@ -310,11 +319,11 @@ function syncChatMeta() {
   }
 }
 
-function unsubChat() { S.unsub.chat?.(); S.unsub.chat = null; S.chat = null; scheduleWatch(); }
+function unsubChat() { stopTypingWatch(); clearTimeout(S.chat?.typeT); S.unsub.chat?.(); S.unsub.chat = null; S.chat = null; scheduleWatch(); }
 function teardown() {
   stopPresence();
   unsubChat();
-  for (const k of ['profile', 'friends', 'servers']) { S.unsub[k]?.(); S.unsub[k] = null; }
+  for (const k of ['profile', 'friends', 'servers', 'config']) { S.unsub[k]?.(); S.unsub[k] = null; }
   Object.values(S.metaUnsub).forEach(u => u());
   Object.assign(S, { me: null, profile: null, friendships: [], meta: {}, metaUnsub: {}, servers: [], activeDm: null, activeServer: null, started: false, tab: 'dms', metaSeen: {}, reqSeen: null });
   for (const k of Object.keys(PROF)) delete PROF[k];
@@ -435,7 +444,7 @@ function buildHead(type, id) {
 function openChat(type, id) {
   unsubChat();
   const col = type === 'dm' ? collection(db, 'chats', id, 'messages') : collection(db, 'servers', id, 'messages');
-  S.chat = { type, id, col, first: true };
+  S.chat = { type, id, col, first: true, seen: {}, lastPing: 0, lastId: null };
   const name = type === 'dm' ? dmInfo(id).name : serverInfo(id).name;
 
   const ta = h('textarea', { id: 'msgInput', rows: 1, maxlength: 2000, placeholder: type === 'dm' ? `Bericht aan ${name}` : `Bericht in ${name}` });
@@ -446,12 +455,16 @@ function openChat(type, id) {
     try { await sendMessage(text); }
     catch (e) { ta.value = text; toast(fbErr(e)); }
   };
-  ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; });
+  ta.addEventListener('input', () => {
+    ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+    if (ta.value.trim()) pingTyping();
+  });
   ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); doSend(); } });
 
   $('#main').replaceChildren(
     buildHead(type, id),
     h('div', { class: 'msgs', id: 'msgList' }),
+    h('div', { class: 'typing', id: 'typingBar', 'aria-live': 'polite' }),
     h('div', { class: 'composer' },
       h('div', { class: 'box' }, ta),
       h('button', { class: 'glow send', type: 'button', title: 'Versturen', 'aria-label': 'Versturen', html: I.send, onclick: doSend })));
@@ -472,6 +485,67 @@ function openChat(type, id) {
 
   if (matchMedia('(min-width: 801px)').matches) ta.focus();
   scheduleWatch(); renderPresence();
+  startTypingWatch();
+}
+
+/* =====================  typ-indicator  ===================== */
+// Per gesprek: <chat of server>/typing/<uid> met { at }. Eén schrijfactie per 3 s zolang je typt,
+// niets bij stoppen of versturen (de indicator verloopt vanzelf na 6 s of zodra er een bericht komt).
+function pingTyping() {
+  const c = S.chat;
+  if (!TY.enabled || !c?.typingCol || activeManual() === 'invisible') return;
+  const now = Date.now();
+  if (now - c.lastPing < TY.every) return;
+  c.lastPing = now;
+  setDoc(doc(c.typingCol, S.me.uid), { at: serverTimestamp() }).catch(() => {});
+}
+
+function startTypingWatch() {
+  const c = S.chat;
+  if (!TY.enabled || !c || c.typingUnsub) return;
+  c.typingCol = collection(c.col.parent, 'typing');
+  let primed = false;
+  c.typingUnsub = onSnapshot(c.typingCol, snap => {
+    if (S.chat !== c) return;
+    for (const ch of snap.docChanges()) {
+      if (ch.type === 'removed' || ch.doc.id === S.me.uid || ch.doc.metadata.hasPendingWrites) continue;
+      const at = ch.doc.data({ serverTimestamps: 'estimate' }).at?.toMillis?.() || 0;
+      if (!primed && Date.now() - at > TY.ttl) continue;   // oud document bij het openen
+      c.seen[ch.doc.id] = Date.now();
+      loadProfiles([ch.doc.id]);
+    }
+    primed = true;
+    renderTyping();
+  }, () => {});
+}
+
+function stopTypingWatch() {
+  const c = S.chat;
+  if (!c) return;
+  c.typingUnsub?.(); c.typingUnsub = null;
+  c.seen = {};
+}
+
+function renderTyping() {
+  const el = $('#typingBar'), c = S.chat;
+  if (!el || !c) return;
+  clearTimeout(c.typeT);
+  const now = Date.now(), names = [];
+  let next = Infinity;
+  if (TY.enabled) {
+    for (const [u, t] of Object.entries(c.seen)) {
+      const left = t + TY.ttl - now;
+      if (left <= 0) { delete c.seen[u]; continue; }
+      next = Math.min(next, left);
+      names.push(PROF[u]?.username || 'Iemand');
+    }
+  }
+  if (!names.length) { el.replaceChildren(); return; }
+  const text = names.length === 1 ? `${names[0]} is aan het typen…`
+    : names.length === 2 ? `${names[0]} en ${names[1]} zijn aan het typen…`
+    : 'Meerdere mensen zijn aan het typen…';
+  el.replaceChildren(h('span', { class: 'tdots' }, h('i'), h('i'), h('i')), h('span', { text }));
+  c.typeT = setTimeout(renderTyping, next + 50);
 }
 
 /* Typen buiten de typbalk: de balk blijft met rust gelaten als je ernaast klikt,
@@ -520,6 +594,13 @@ function renderMessages(msgs) {
   }
   if (nearBottom) list.scrollTop = list.scrollHeight;
   S.chat.first = false;
+
+  const last = msgs[msgs.length - 1];
+  if (last && last.id !== S.chat.lastId) {
+    if (S.chat.lastId && last.uid !== S.me.uid) delete S.chat.seen[last.uid];
+    S.chat.lastId = last.id;
+    renderTyping();
+  }
 }
 
 async function sendMessage(text) {

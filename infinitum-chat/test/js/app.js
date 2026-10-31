@@ -34,6 +34,9 @@ function h(tag, props, ...kids) {
 
 const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const I = {
+  shield: svg('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>'),
+  calendar: svg('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
+  star: svg('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>'),
   eye: svg('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
   send: '<svg viewBox="0 0 24 24"><path d="M3.2 11.4 20.4 3.3c.9-.4 1.7.5 1.3 1.3L13.6 21.8c-.4.9-1.7.8-1.9-.2l-1.6-6.5L3.5 13.3c-1-.2-1.2-1.5-.3-1.9z" fill="url(#gradSend)"/></svg>',
   logout: svg('<path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3M16 8l4 4-4 4M20 12H9"/>'),
@@ -293,6 +296,12 @@ function startListeners() {
     if (S.chat) { TY.enabled ? startTypingWatch() : stopTypingWatch(); renderTyping(); syncReadWatch(); }
   }, () => { TY.enabled = false; RR.enabled = false; stopTypingWatch(); renderTyping(); syncReadWatch(); });
 
+  // alle badges (klein): Firestore -> badges -> <badge-id>
+  S.unsub.badges = onSnapshot(collection(db, 'badges'), snap => {
+    BADGES.length = 0;
+    snap.forEach(d => BADGES.push({ id: d.id, ...d.data() }));
+  }, () => {});
+
   startPresence();
 }
 
@@ -327,7 +336,8 @@ function unsubChat() { stopTypingWatch(); stopReadWatch(); clearTimeout(S.chat?.
 function teardown() {
   stopPresence();
   unsubChat();
-  for (const k of ['profile', 'friends', 'servers', 'config']) { S.unsub[k]?.(); S.unsub[k] = null; }
+  for (const k of ['profile', 'friends', 'servers', 'config', 'badges']) { S.unsub[k]?.(); S.unsub[k] = null; }
+  BADGES.length = 0;
   Object.values(S.metaUnsub).forEach(u => u());
   Object.assign(S, { me: null, profile: null, friendships: [], meta: {}, metaUnsub: {}, servers: [], activeDm: null, activeServer: null, started: false, tab: 'dms', metaSeen: {}, reqSeen: null });
   for (const k of Object.keys(PROF)) delete PROF[k];
@@ -1484,12 +1494,39 @@ async function openCropper(file, outW, outH, { round = false, maxLen = 140000 } 
 }
 
 /* --- eigen profiel bewerken (klik op je profielfoto) --- */
+/* --- badges ---
+   Definities staan in Firestore (collectie `badges`). Een badge met auto = 'memberSince' toont de dag waarop het account is gemaakt
+   (users/{uid}.createdAt); alle andere badges tonen we als de uid in het veld `users` (array) van het badge-document staat. */
+const BADGES = [];
+const BADGE_ICONS = ['shield', 'calendar', 'star'];
+const dateFmt = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+function badgeChips(uid, prof) {
+  const out = [];
+  const list = [...BADGES].sort((a, b) => (Number(a.order) || 99) - (Number(b.order) || 99) || String(a.name).localeCompare(String(b.name)));
+  for (const b of list) {
+    let extra = '';
+    if (b.auto === 'memberSince') {
+      const t = prof?.createdAt?.toDate?.();
+      if (!t) continue;
+      extra = dateFmt.format(t);
+    } else if (!(Array.isArray(b.users) && b.users.includes(uid))) continue;
+    const color = HEX_RE.test(b.color) ? b.color : '#7c5cff';
+    const ic = BADGE_ICONS.includes(b.icon)
+      ? h('span', { class: 'bd-ic', html: I[b.icon] })
+      : h('span', { class: 'bd-ic', text: String(b.icon || '★').slice(0, 4) });
+    out.push(h('span', { class: 'badge', style: `--c:${color}`, title: String(b.description || b.name || '') },
+      ic, h('b', { text: String(b.name || 'Badge') }), extra ? h('small', { text: extra }) : null));
+  }
+  return out;
+}
+
 function openProfileEditor() {
   const p = S.profile || {}, uid = S.me.uid, name = p.username || '?';
   const d = {
     avatar: safeImg(p.avatar), banner: safeBanner(p.banner), bio: p.bio || '', status: p.status || '',
     links: (p.links || []).filter(l => parseLink(l))
   };
+  const myBadges = badgeChips(uid, p);
   const lockedUntil = (p.usernameChangedAt?.toMillis?.() || 0) + 7 * 864e5;
   const locked = lockedUntil > Date.now();
   const err = h('p', { class: 'err' });
@@ -1590,6 +1627,7 @@ function openProfileEditor() {
       h('button', { class: 'ghost sm', type: 'button', text: 'Bannerafbeelding kiezen', onclick: choose(setBanner) }),
       h('label', { class: 'pf-colorl' }, 'of kleur', color),
       swatches, rmBanner),
+    myBadges.length ? h('div', { class: 'pf-sec' }, h('h4', { text: 'Badges' }), h('div', { class: 'chips' }, myBadges)) : null,
     h('label', { class: 'lbl', text: 'Gebruikersnaam' }), nameInp, nameNote,
     h('label', { class: 'lbl', text: 'Status' }), statusInp,
     h('label', { class: 'lbl', text: 'Bio' }), ta, cnt,
@@ -1612,6 +1650,7 @@ async function openProfile(uid) {
   if (!d) { toast('Profiel niet gevonden.'); return; }
   const f = accepted().find(x => otherId(x) === uid), st = presState(uid);
   const links = (d.links || []).map(l => linkChip(l)).filter(Boolean);
+  const badges = badgeChips(uid, d);
   const av = h('span', { class: 'avatar big', style: '--s:88px' });
   paintBig(av, d.avatar, uid, d.username);
   openDialog(
@@ -1620,6 +1659,7 @@ async function openProfile(uid) {
     h('h3', { text: d.username }),
     h('p', { class: 'pf-state' }, sIcon(st), [LABEL[st], d.status].filter(Boolean).join(' · ')),
     d.bio ? h('p', { class: 'pf-bio', text: d.bio }) : null,
+    badges.length ? h('div', { class: 'pf-sec' }, h('h4', { text: 'Badges' }), h('div', { class: 'chips' }, badges)) : null,
     links.length ? h('div', { class: 'pf-sec' }, h('h4', { text: 'Links' }), h('div', { class: 'chips' }, links)) : null,
     h('div', { class: 'dlg-actions' },
       f ? h('button', { class: 'btn-ok', type: 'button', text: 'Bericht', onclick: () => { closeDialog(); S.activeDm = f.id; S.tab = 'dms'; renderTabs(); renderSidebar(); showMain(); } }) : null,

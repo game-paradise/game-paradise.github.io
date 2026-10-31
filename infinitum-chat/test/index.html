@@ -12,15 +12,15 @@
       var t = s.theme || 'dark';
       if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
       document.documentElement.dataset.theme = t;
-      document.documentElement.dataset.bg = s.bg || 'cosmos';
+      document.documentElement.dataset.bg = ['cosmos', 'aurora', 'sunset', 'ocean'].indexOf(s.bg) > -1 ? s.bg : 'cosmos';
     } catch (e) { document.documentElement.dataset.theme = 'dark'; }
   </script>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-  <script type="module" src="js/app.js"></script>
+  <link rel="stylesheet" href="styles.css?v=3">
+  <script type="module" src="js/app.js?v=3"></script>
 </head>
 <body>
   <!-- gedeelde gradient voor het verstuur-icoon -->

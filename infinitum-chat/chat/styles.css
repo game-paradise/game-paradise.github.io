@@ -530,3 +530,13 @@ dialog.crop-dlg { width: min(540px, 94vw); }
 .crop-zl { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
 .crop-zl span { font-size: 13px; color: var(--muted); }
 .crop-zl input { flex: 1; accent-color: var(--p); }
+
+/* ===== typ-indicator ===== */
+.typing { min-height: 22px; padding: 0 22px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.typing:empty { visibility: hidden; }
+.tdots { display: inline-flex; gap: 3px; }
+.tdots i { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); animation: tdot 1.2s infinite ease-in-out; }
+.tdots i:nth-child(2) { animation-delay: .15s; }
+.tdots i:nth-child(3) { animation-delay: .3s; }
+@keyframes tdot { 0%, 60%, 100% { opacity: .3; transform: none; } 30% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .tdots i { animation: none; opacity: .7; } }

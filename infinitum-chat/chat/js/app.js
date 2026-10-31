@@ -1088,13 +1088,17 @@ const BGS = [
   { id: 'ocean', name: 'Oceaan', file: 'bg-ocean.svg' }
 ];
 const CFG = (() => {
-  const def = { theme: 'dark', bg: 'cosmos', notif: { desktop: false, sound: true, dm: true, server: true, requests: true, preview: true } };
+  const def = { theme: 'dark', bg: 'cosmos', profileClick: true, notif: { desktop: false, sound: true, dm: true, server: true, requests: true, preview: true } };
   try {
     const r = JSON.parse(localStorage.getItem(SET_KEY) || '{}');
     return { ...def, ...r, notif: { ...def.notif, ...(r.notif || {}) } };
   } catch { return def; }
 })();
 const saveSet = () => { try { localStorage.setItem(SET_KEY, JSON.stringify(CFG)); } catch {} };
+
+// klik op een profielfoto in de zijbalk opent het profiel (instelbaar bij Instellingen -> Profielen)
+const applyProfileClick = () => { document.documentElement.dataset.pfclick = CFG.profileClick ? '1' : ''; };
+applyProfileClick();
 
 const lightMq = matchMedia('(prefers-color-scheme: light)');
 function applyAppearance() {
@@ -1195,6 +1199,17 @@ function renderSettings() {
     return p === 'granted';
   };
 
+  const profTog = (() => {
+    const cb = h('input', { type: 'checkbox' });
+    cb.checked = !!CFG.profileClick;
+    cb.addEventListener('change', () => { CFG.profileClick = cb.checked; saveSet(); applyProfileClick(); });
+    return h('label', { class: 'tog' },
+      h('span', { class: 'tog-text' },
+        h('b', { text: 'Profiel openen via de zijbalk' }),
+        h('small', { text: 'Klik op de profielfoto van een vriend in de lijst links om meteen zijn of haar profiel te openen. Uit = de foto opent gewoon het gesprek.' })),
+      cb, h('i'));
+  })();
+
   $('#main').replaceChildren(h('div', { class: 'pane settings' },
     h('h2', { text: 'Instellingen' }),
     h('p', { class: 'sub', text: 'Deze instellingen worden op dit apparaat bewaard.' }),
@@ -1202,6 +1217,9 @@ function renderSettings() {
       h('h3', { text: 'Weergave' }),
       h('p', { class: 'set-lbl', text: 'Thema' }), h('div', { class: 'opts' }, themeBtns),
       h('p', { class: 'set-lbl', text: 'Achtergrond' }), h('div', { class: 'bg-grid' }, bgBtns)),
+    h('section', { class: 'set-card' },
+      h('h3', { text: 'Profielen' }),
+      profTog),
     h('section', { class: 'set-card' },
       h('h3', { text: 'Meldingen' }),
       tog('desktop', 'Bureaubladmeldingen', 'Een melding van je browser als de site op de achtergrond staat.', askDesktop),
@@ -1530,6 +1548,15 @@ document.addEventListener('click', e => {
   if (!a || !S.me || a.closest('.item, dialog')) return;
   openProfile(a.dataset.uid);
 });
+
+// zijbalk (DM-lijst): foto aanklikken opent het profiel i.p.v. het gesprek, tenzij uitgezet in de instellingen
+document.addEventListener('click', e => {
+  if (!CFG.profileClick || !S.me) return;
+  const a = e.target.closest('#sideList .item .avatar[data-uid]');
+  if (!a) return;
+  e.preventDefault(); e.stopPropagation();
+  openProfile(a.dataset.uid);
+}, true);
 
 /* =====================  premium-knop  ===================== */
 $('#premiumBtn').addEventListener('click', () => {

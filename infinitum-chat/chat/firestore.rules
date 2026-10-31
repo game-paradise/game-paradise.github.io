@@ -8,6 +8,13 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
 
+    // Moderators = de uid's in het veld `users` (array) van het badge-document met id `moderator`.
+    function isMod() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/badges/moderator)
+        && request.auth.uid in get(/databases/$(database)/documents/badges/moderator).data.get('users', []);
+    }
+
     // Een DM-chat mag alleen als jullie bevestigde vrienden zijn.
     function friendship(id) {
       return get(/databases/$(database)/documents/friendships/$(id));
@@ -81,7 +88,48 @@ service cloud.firestore {
         && request.resource.data.get('links', []) is list
         && request.resource.data.get('links', []).size() <= 6
         && request.resource.data.get('tier', null) == resource.data.get('tier', null);   // tier mag je niet zelf wijzigen
+      // Een moderator mag het tier van iemand anders ALLEEN zetten als er een goedgekeurde aanvraag voor precies dat tier is
+      // (de goedkeuring en deze wijziging gebeuren samen in één batch).
+      allow update: if isMod()
+        && uid != request.auth.uid
+        && changed(['tier'])
+        && request.resource.data.tier in ['plus', 'prime']
+        && getAfter(/databases/$(database)/documents/subscriptions/$(uid)).data.status == 'approved'
+        && getAfter(/databases/$(database)/documents/subscriptions/$(uid)).data.tier == request.resource.data.tier;
       allow delete: if false;
+    }
+
+    // ---------- abonnementsaanvragen (id = uid van de aanvrager) ----------
+    match /subscriptions/{uid} {
+      function validSubRequest() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['username', 'tier', 'status', 'requestedAt'])
+          && d.username is string && d.username.size() <= 20
+          && d.tier in ['plus', 'prime']
+          && d.status == 'pending'
+          && d.requestedAt == request.time
+          && get(/databases/$(database)/documents/users/$(uid)).data.get('tier', 'free') != d.tier;
+      }
+
+      // je ziet alleen je eigen aanvraag; moderators zien alle aanvragen
+      allow read: if isSelf(uid) || isMod();
+      allow create: if isSelf(uid) && validSubRequest();
+      allow update: if (isSelf(uid) && validSubRequest())
+        || (isMod()
+            && uid != request.auth.uid
+            && resource.data.status == 'pending'
+            && changed(['status', 'decidedBy', 'decidedAt'])
+            && request.resource.data.status in ['approved', 'rejected']
+            && request.resource.data.decidedBy == request.auth.uid
+            && request.resource.data.decidedAt == request.time);
+      // aanvraag annuleren of opruimen
+      allow delete: if isSelf(uid);
+    }
+
+    // ---------- functies per abonnement (alleen te wijzigen via de Firebase Console) ----------
+    match /features/{featureId} {
+      allow read: if signedIn();
+      allow write: if false;
     }
 
     // ---------- online / inactief / offline ----------

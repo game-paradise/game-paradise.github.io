@@ -142,6 +142,11 @@ service cloud.firestore {
         && request.resource.data.at == request.time;
     }
 
+    function validRead() {
+      return request.resource.data.keys().hasOnly(['at'])
+        && request.resource.data.at == request.time;
+    }
+
     // ---------- DM's ----------
     match /chats/{chatId} {
       allow read: if isFriendChat(chatId);
@@ -157,6 +162,15 @@ service cloud.firestore {
         allow read: if isFriendChat(chatId);
         allow create: if isFriendChat(chatId) && isSelf(uid) && validTyping();
         allow update: if isFriendChat(chatId) && isSelf(uid) && validTyping()
+          && request.time > resource.data.at + duration.value(2, 's');
+        allow delete: if false;
+      }
+
+      // leesbewijzen: wanneer jij het gesprek voor het laatst las (max. 1 update per 2 seconden)
+      match /reads/{uid} {
+        allow read: if isFriendChat(chatId);
+        allow create: if isFriendChat(chatId) && isSelf(uid) && validRead();
+        allow update: if isFriendChat(chatId) && isSelf(uid) && validRead()
           && request.time > resource.data.at + duration.value(2, 's');
         allow delete: if false;
       }
@@ -218,6 +232,14 @@ service cloud.firestore {
         allow read: if signedIn() && request.auth.uid in serverDoc().members;
         allow create: if isSelf(uid) && request.auth.uid in serverDoc().members && validTyping();
         allow update: if isSelf(uid) && request.auth.uid in serverDoc().members && validTyping()
+          && request.time > resource.data.at + duration.value(2, 's');
+        allow delete: if false;
+      }
+
+      match /reads/{uid} {
+        allow read: if signedIn() && request.auth.uid in serverDoc().members;
+        allow create: if isSelf(uid) && request.auth.uid in serverDoc().members && validRead();
+        allow update: if isSelf(uid) && request.auth.uid in serverDoc().members && validRead()
           && request.time > resource.data.at + duration.value(2, 's');
         allow delete: if false;
       }

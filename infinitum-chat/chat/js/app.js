@@ -47,10 +47,14 @@ const I = {
 
 function hash(s) { let x = 0; for (const c of String(s)) x = (x * 31 + c.charCodeAt(0)) >>> 0; return x; }
 const PROF = {};   // uid -> profieldata (live voor vrienden, eenmalig opgehaald voor anderen)
+// alleen echte jpeg-data-urls of hex-kleuren komen ooit in CSS terecht
+const IMG_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/, HEX_RE = /^#[0-9a-fA-F]{6}$/;
+const safeImg = (s) => (typeof s === 'string' && IMG_RE.test(s)) ? s : '';
+const safeBanner = (s) => (typeof s === 'string' && (HEX_RE.test(s) || IMG_RE.test(s))) ? s : '';
 const gradFor = (id) => { const hu = hash(id) % 360; return `linear-gradient(135deg,hsl(${hu} 80% 62%),hsl(${(hu + 70) % 360} 80% 52%))`; };
 const letterOf = (name) => (String(name || '?').trim()[0] || '?').toUpperCase();
 function paintAvatar(el) {
-  const src = el.dataset.uid && PROF[el.dataset.uid]?.avatar;
+  const src = el.dataset.uid && safeImg(PROF[el.dataset.uid]?.avatar);
   if (src) { el.style.background = `center / cover no-repeat url("${src}")`; el.textContent = ''; }
   else { el.style.background = gradFor(el.dataset.gid); el.textContent = el.dataset.ch; }
 }
@@ -69,7 +73,7 @@ function loadProfiles(uids) {
   for (const u of new Set(uids)) {
     if (!u || u in PROF) continue;
     PROF[u] = null;
-    getDoc(doc(db, 'users', u)).then(s => { PROF[u] = s.exists() ? s.data() : null; refreshAvatars(); }).catch(() => {});
+    getDoc(doc(db, 'users', u)).then(s => { PROF[u] = s.exists() ? s.data() : null; onProfChange(u); }).catch(() => {});
   }
 }
 
@@ -135,7 +139,7 @@ const accepted = () => S.friendships.filter(f => f.status === 'accepted');
 const incoming = () => S.friendships.filter(f => f.status === 'pending' && f.requester !== S.me.uid);
 const outgoing = () => S.friendships.filter(f => f.status === 'pending' && f.requester === S.me.uid);
 const otherId = (f) => f.users.find(u => u !== S.me.uid);
-const otherName = (f) => (f.names && f.names[otherId(f)]) || 'Onbekend';
+const otherName = (f) => PROF[otherId(f)]?.username || (f.names && f.names[otherId(f)]) || 'Onbekend';
 const dmInfo = (id) => { const f = accepted().find(x => x.id === id); return f ? { uid: otherId(f), name: otherName(f) } : null; };
 const serverInfo = (id) => S.servers.find(s => s.id === id) || null;
 const setView = (v) => { $('#app').dataset.view = v; };
@@ -333,14 +337,7 @@ function renderUserCard() {
   const p = S.profile;
   $('#meAvatar').replaceChildren(dotted(S.me.uid, p?.username, 46));
   $('#meName').textContent = p?.username || '…';
-  const si = $('#meStatus');
-  if (document.activeElement !== si) si.value = p?.status || '';
 }
-$('#meStatus').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
-$('#meStatus').addEventListener('change', async e => {
-  try { await updateDoc(doc(db, 'users', S.me.uid), { status: e.target.value.trim().slice(0, 40) }); }
-  catch (ex) { toast(fbErr(ex)); }
-});
 
 let sideRaf = 0;
 function scheduleSidebar() { cancelAnimationFrame(sideRaf); sideRaf = requestAnimationFrame(renderSidebar); }
@@ -515,9 +512,9 @@ function renderMessages(msgs) {
     const mine = m.uid === S.me.uid;
     list.append(h('div', { class: `msg ${mine ? 'mine' : 'theirs'}${grouped ? ' grouped' : ''}` },
       mine && h('button', { class: 'icon-btn del', type: 'button', title: 'Verwijderen', 'aria-label': 'Bericht verwijderen', html: I.trash, onclick: () => deleteMessage(m.id) }),
-      !mine && h('div', { class: 'msg-av' }, grouped ? null : avatar(m.uid, m.name, 34, true)),
+      !mine && h('div', { class: 'msg-av' }, grouped ? null : avatar(m.uid, PROF[m.uid]?.username || m.name, 34, true)),
       h('div', { class: 'msg-body' },
-        !grouped && h('div', { class: 'meta' }, !mine && h('b', { text: m.name || 'Onbekend' }), h('time', { text: tf.format(d) })),
+        !grouped && h('div', { class: 'meta' }, !mine && h('b', { text: PROF[m.uid]?.username || m.name || 'Onbekend' }), h('time', { text: tf.format(d) })),
         h('div', { class: 'bubble', text: m.text }))));
     prev = { uid: m.uid, d };
   }
@@ -807,7 +804,7 @@ function syncPresenceWatch() {
     const offP = onSnapshot(doc(db, 'presence', u),
       s => { P.data[u] = s.exists() ? s.data() : null; renderPresence(); }, () => {});
     const offU = onSnapshot(doc(db, 'users', u),
-      s => { PROF[u] = s.exists() ? s.data() : null; refreshAvatars(); }, () => {});
+      s => { PROF[u] = s.exists() ? s.data() : null; onProfChange(u); }, () => {});
     P.unsub[u] = () => { offP(); offU(); };
   }
   renderPresence();
@@ -963,6 +960,7 @@ $('#meName').after(statusBtn);
 
 /* --- ledenlijst van de open server --- */
 async function nameOf(uid) {
+  if (PROF[uid]?.username) return PROF[uid].username;
   if (NAME[uid]) return NAME[uid];
   if (uid === S.me.uid) return S.profile?.username || 'Jij';
   const f = accepted().find(x => x.users.includes(uid));
@@ -1176,62 +1174,179 @@ function linkChip(l, onRemove) {
     h('button', { class: 'lk-x', type: 'button', html: I.x, 'aria-label': 'Link verwijderen', onclick: onRemove }));
 }
 
-/* --- afbeeldingen kiezen, bijsnijden en verkleinen --- */
-async function cropImage(file, w, hh, maxLen) {
-  const bmp = await createImageBitmap(file);
-  const sc = Math.max(w / bmp.width, hh / bmp.height), cw = w / sc, ch = hh / sc;
-  const cv = document.createElement('canvas'); cv.width = w; cv.height = hh;
-  const c = cv.getContext('2d');
-  c.fillStyle = '#0b1030'; c.fillRect(0, 0, w, hh);
-  c.drawImage(bmp, (bmp.width - cw) / 2, (bmp.height - ch) / 2, cw, ch, 0, 0, w, hh);
-  bmp.close?.();
-  for (const q of [.85, .7, .55, .4]) {
-    const out = cv.toDataURL('image/jpeg', q);
-    if (out.length <= maxLen) return out;
+/* --- reageren op profielwijzigingen van anderen (naam/foto) --- */
+function onProfChange(u) {
+  refreshAvatars(); scheduleSidebar();
+  if (S.tab === 'friends') renderFriendList();
+  if (S.chat?.type === 'dm' && dmInfo(S.chat.id)?.uid === u) {
+    const old = $('#chatHead');
+    if (old) { old.replaceWith(buildHead('dm', S.chat.id)); renderPresence(); }
   }
-  throw new Error('te groot');
 }
-function pickImage(w, hh, maxLen) {
+
+/* --- afbeeldingen: kiezen, slepen-en-neerzetten, bijsnijden (slepen + zoomen) --- */
+const imgBg = (src, id) => {
+  const b = safeBanner(src);
+  if (HEX_RE.test(b)) return b;
+  return b ? `center / cover no-repeat url("${b}")` : gradFor(id);
+};
+function paintBig(el, src, id, name) {
+  const s = safeImg(src);
+  el.style.background = s ? `center / cover no-repeat url("${s}")` : gradFor(id);
+  el.textContent = s ? '' : letterOf(name);
+}
+function pickFile() {
   return new Promise(res => {
     const inp = document.createElement('input');
     inp.type = 'file'; inp.accept = 'image/*';
-    inp.onchange = async () => {
-      const f = inp.files[0];
-      if (!f) return res(null);
-      try { res(await cropImage(f, w, hh, maxLen)); }
-      catch { toast('Die afbeelding kon niet worden gebruikt.'); res(null); }
-    };
+    inp.onchange = () => res(inp.files[0] || null);
+    inp.addEventListener('cancel', () => res(null));
     inp.click();
   });
 }
-const imgBg = (src, id) => src ? `center / cover no-repeat url("${src}")` : gradFor(id);
-function paintBig(el, src, id, name) {
-  el.style.background = imgBg(src, id);
-  el.textContent = src ? '' : letterOf(name);
+function dropTarget(el, onFile) {
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  el.addEventListener('dragover', e => { stop(e); el.classList.add('drop'); });
+  el.addEventListener('dragleave', e => { stop(e); el.classList.remove('drop'); });
+  el.addEventListener('drop', e => {
+    stop(e); el.classList.remove('drop');
+    const f = [...(e.dataTransfer?.files || [])].find(x => x.type.startsWith('image/'));
+    if (f) onFile(f); else toast('Sleep een afbeelding (jpg, png, webp of gif).');
+  });
+}
+
+// Toont de afbeelding in een vak ter grootte van het resultaat: sleep om te verplaatsen, zoom met schuifbalk of muiswiel.
+async function openCropper(file, outW, outH, { round = false, maxLen = 140000 } = {}) {
+  let bmp;
+  try { bmp = await createImageBitmap(file); }
+  catch { toast('Die afbeelding kon niet worden geladen.'); return null; }
+
+  return new Promise(resolve => {
+    const VW = Math.max(160, Math.min(round ? 280 : 460, window.innerWidth - 100));
+    const VH = Math.round(VW * outH / outW);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cv = h('canvas', { class: 'crop-cv' + (round ? ' round' : '') });
+    cv.width = VW * dpr; cv.height = VH * dpr; cv.style.width = VW + 'px'; cv.style.height = VH + 'px';
+    const ctx = cv.getContext('2d');
+
+    const base = Math.max(VW / bmp.width, VH / bmp.height);   // minimale schaal: de afbeelding vult het vak
+    let zoom = 1, ox = (VW - bmp.width * base) / 2, oy = (VH - bmp.height * base) / 2;
+    const slider = h('input', { type: 'range', min: 1, max: 4, step: .01, value: 1, 'aria-label': 'Zoom' });
+    const clamp = () => {
+      ox = Math.min(0, Math.max(VW - bmp.width * base * zoom, ox));
+      oy = Math.min(0, Math.max(VH - bmp.height * base * zoom, oy));
+    };
+    const draw = () => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = '#0b1030'; ctx.fillRect(0, 0, VW, VH);
+      ctx.drawImage(bmp, ox, oy, bmp.width * base * zoom, bmp.height * base * zoom);
+    };
+    const setZoom = (z, cx = VW / 2, cy = VH / 2) => {
+      z = Math.min(4, Math.max(1, z));
+      const k = z / zoom;
+      ox = cx - (cx - ox) * k; oy = cy - (cy - oy) * k; zoom = z;
+      clamp(); slider.value = z; draw();
+    };
+    slider.addEventListener('input', () => setZoom(+slider.value));
+
+    let drag = null;
+    cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); drag = { x: e.clientX, y: e.clientY, ox, oy }; });
+    cv.addEventListener('pointermove', e => {
+      if (!drag) return;
+      ox = drag.ox + e.clientX - drag.x; oy = drag.oy + e.clientY - drag.y;
+      clamp(); draw();
+    });
+    const end = () => { drag = null; };
+    cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+    cv.addEventListener('wheel', e => {
+      e.preventDefault();
+      const r = cv.getBoundingClientRect();
+      setZoom(zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX - r.left, e.clientY - r.top);
+    }, { passive: false });
+
+    // het resultaat is precies wat je in het vak ziet
+    const render = () => {
+      const o = document.createElement('canvas'); o.width = outW; o.height = outH;
+      const c = o.getContext('2d'), k = outW / VW;
+      c.fillStyle = '#0b1030'; c.fillRect(0, 0, outW, outH);
+      c.drawImage(bmp, ox * k, oy * k, bmp.width * base * zoom * k, bmp.height * base * zoom * k);
+      for (const q of [.88, .75, .6, .45, .3]) {
+        const s = o.toDataURL('image/jpeg', q);
+        if (s.length <= maxLen) return s;
+      }
+      return null;
+    };
+
+    const dl = document.createElement('dialog');
+    dl.className = 'crop-dlg';
+    const done = (v) => { if (dl.open) dl.close(); dl.remove(); bmp.close?.(); resolve(v); };
+    dl.addEventListener('cancel', e => { e.preventDefault(); done(null); });
+    dl.append(h('div', { class: 'dlg-in' },
+      h('h3', { text: round ? 'Profielfoto bijsnijden' : 'Banner bijsnijden' }),
+      h('p', { class: 'sub', text: 'Sleep de afbeelding om hem te verplaatsen en zoom met de schuifbalk of het muiswiel.' }),
+      h('div', { class: 'crop-stage' }, cv),
+      h('label', { class: 'crop-zl' }, h('span', { text: 'Zoom' }), slider),
+      h('div', { class: 'dlg-actions' },
+        h('button', { class: 'ghost', type: 'button', text: 'Annuleren', onclick: () => done(null) }),
+        h('button', { class: 'glow', type: 'button', text: 'Gebruiken', onclick: () => {
+          const s = render();
+          if (!s) { toast('Die afbeelding is te groot. Probeer een kleinere.'); return; }
+          done(s);
+        } }))));
+    document.body.append(dl);
+    dl.showModal();
+    draw();
+  });
 }
 
 /* --- eigen profiel bewerken (klik op je profielfoto) --- */
 function openProfileEditor() {
   const p = S.profile || {}, uid = S.me.uid, name = p.username || '?';
-  const d = { avatar: p.avatar || '', banner: p.banner || '', bio: p.bio || '', links: (p.links || []).filter(l => parseLink(l)) };
+  const d = {
+    avatar: safeImg(p.avatar), banner: safeBanner(p.banner), bio: p.bio || '', status: p.status || '',
+    links: (p.links || []).filter(l => parseLink(l))
+  };
+  const lockedUntil = (p.usernameChangedAt?.toMillis?.() || 0) + 7 * 864e5;
+  const locked = lockedUntil > Date.now();
   const err = h('p', { class: 'err' });
 
-  const banner = h('button', {
-    class: 'pf-banner', type: 'button', title: 'Banner wijzigen',
-    onclick: async () => { const s = await pickImage(720, 240, 140000); if (s) { d.banner = s; paint(); } }
-  }, h('span', { class: 'pf-cta', text: 'Banner wijzigen' }));
+  const setBanner = async (file) => { const s = await openCropper(file, 720, 240, { maxLen: 140000 }); if (s) { d.banner = s; paint(); } };
+  const setAvatar = async (file) => { const s = await openCropper(file, 160, 160, { round: true, maxLen: 38000 }); if (s) { d.avatar = s; paint(); } };
+  const choose = (fn) => async () => { const f = await pickFile(); if (f) fn(f); };
+
+  const banner = h('button', { class: 'pf-banner', type: 'button', title: 'Klik of sleep een afbeelding', onclick: choose(setBanner) },
+    h('span', { class: 'pf-cta', text: 'Klik of sleep een afbeelding' }));
+  dropTarget(banner, setBanner);
   const av = h('span', { class: 'avatar big', style: '--s:88px' });
-  const avBtn = h('button', {
-    class: 'pf-av', type: 'button', title: 'Profielfoto wijzigen',
-    onclick: async () => { const s = await pickImage(160, 160, 38000); if (s) { d.avatar = s; paint(); } }
-  }, av, h('span', { class: 'pf-cta', text: 'Wijzig' }));
+  const avBtn = h('button', { class: 'pf-av', type: 'button', title: 'Klik of sleep een afbeelding', onclick: choose(setAvatar) },
+    av, h('span', { class: 'pf-cta', text: 'Wijzig' }));
+  dropTarget(avBtn, setAvatar);
+
   const rmAv = h('button', { class: 'ghost sm', type: 'button', text: 'Foto verwijderen', onclick: () => { d.avatar = ''; paint(); } });
-  const rmBanner = h('button', { class: 'ghost sm', type: 'button', text: 'Banner verwijderen', onclick: () => { d.banner = ''; paint(); } });
+  const rmBanner = h('button', { class: 'ghost sm', type: 'button', text: 'Banner leegmaken', onclick: () => { d.banner = ''; paint(); } });
+
+  // bannerkleur
+  const color = h('input', { type: 'color', class: 'pf-color', title: 'Kies een kleur', 'aria-label': 'Bannerkleur' });
+  color.value = HEX_RE.test(d.banner) ? d.banner : '#7c5cff';
+  const useColor = (c) => { color.value = c; d.banner = c; paint(); };
+  color.addEventListener('input', () => useColor(color.value));
+  const swatches = ['#7c5cff', '#ff62d3', '#ffc857', '#38bdf8', '#43d17a', '#ff4d5e', '#1b1f3b'].map(c =>
+    h('button', { class: 'sw', type: 'button', title: c, 'aria-label': 'Kleur ' + c, style: `background:${c}`, onclick: () => useColor(c) }));
+
   const paint = () => {
     banner.style.background = imgBg(d.banner, uid + 'b');
     paintBig(av, d.avatar, uid, name);
     rmAv.hidden = !d.avatar; rmBanner.hidden = !d.banner;
   };
+
+  const nameInp = h('input', { class: 'inp', maxlength: 20, autocomplete: 'off', spellcheck: 'false' });
+  nameInp.value = name; nameInp.disabled = locked;
+  const nameNote = h('small', {
+    class: 'count left',
+    text: locked ? `Je kunt je naam weer wijzigen vanaf ${df.format(new Date(lockedUntil))}.` : 'Je kunt je gebruikersnaam één keer per week wijzigen.'
+  });
+  const statusInp = h('input', { class: 'inp', maxlength: 40, autocomplete: 'off', placeholder: 'Wat ben je aan het doen?' });
+  statusInp.value = d.status;
 
   const ta = h('textarea', { class: 'inp', rows: 3, maxlength: 200, placeholder: 'Vertel iets over jezelf…' });
   ta.value = d.bio;
@@ -1256,10 +1371,29 @@ function openProfileEditor() {
 
   const save = h('button', { class: 'glow', type: 'button', text: 'Opslaan' });
   save.onclick = async () => {
-    save.disabled = true; err.textContent = '';
+    err.textContent = '';
+    const newName = nameInp.value.trim();
+    const rename = !locked && newName !== name;
+    if (rename) {
+      if (!/^[A-Za-z0-9_.]{2,20}$/.test(newName)) { err.textContent = 'Gebruikersnaam: 2–20 tekens, alleen letters, cijfers, _ en .'; return; }
+      if (!confirm(`Je wordt "${newName}". Daarna kun je je naam een week lang niet meer wijzigen. Doorgaan?`)) return;
+    }
+    save.disabled = true;
     try {
-      await updateDoc(doc(db, 'users', uid), { bio: ta.value.trim().slice(0, 200), avatar: d.avatar, banner: d.banner, links: d.links });
-      closeDialog(); toast('Profiel opgeslagen.');
+      const batch = writeBatch(db);
+      const upd = { status: statusInp.value.trim().slice(0, 40), bio: ta.value.trim().slice(0, 200), avatar: d.avatar, banner: d.banner, links: d.links };
+      if (rename) {
+        const oldL = p.usernameLower || name.toLowerCase(), lower = newName.toLowerCase();
+        if (lower !== oldL) {
+          if ((await getDoc(doc(db, 'usernames', lower))).exists()) { err.textContent = 'Deze gebruikersnaam is al bezet.'; return; }
+          batch.delete(doc(db, 'usernames', oldL));
+          batch.set(doc(db, 'usernames', lower), { uid });
+        }
+        Object.assign(upd, { username: newName, usernameLower: lower, usernameChangedAt: serverTimestamp() });
+      }
+      batch.update(doc(db, 'users', uid), upd);
+      await batch.commit();
+      closeDialog(); toast(rename ? `Je heet nu ${newName}.` : 'Profiel opgeslagen.');
     } catch (e) { err.textContent = fbErr(e); }
     finally { save.disabled = false; }
   };
@@ -1267,7 +1401,13 @@ function openProfileEditor() {
   openDialog(
     h('h3', { text: 'Jouw profiel' }),
     banner,
-    h('div', { class: 'pf-row' }, avBtn, h('div', { class: 'pf-rm' }, rmAv, rmBanner)),
+    h('div', { class: 'pf-row' }, avBtn, h('div', { class: 'pf-rm' }, rmAv)),
+    h('div', { class: 'pf-bar' },
+      h('button', { class: 'ghost sm', type: 'button', text: 'Bannerafbeelding kiezen', onclick: choose(setBanner) }),
+      h('label', { class: 'pf-colorl' }, 'of kleur', color),
+      swatches, rmBanner),
+    h('label', { class: 'lbl', text: 'Gebruikersnaam' }), nameInp, nameNote,
+    h('label', { class: 'lbl', text: 'Status' }), statusInp,
     h('label', { class: 'lbl', text: 'Bio' }), ta, cnt,
     h('div', { class: 'pf-links' },
       h('h4', { text: 'Links' }),

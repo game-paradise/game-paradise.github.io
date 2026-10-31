@@ -5,7 +5,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
 import {
   collection, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, query, where, orderBy,
-  limit, onSnapshot, serverTimestamp, writeBatch, arrayUnion, arrayRemove
+  limit, onSnapshot, serverTimestamp, writeBatch, arrayUnion, arrayRemove, Timestamp
 } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
 
 /* =====================  helpers  ===================== */
@@ -41,6 +41,7 @@ const I = {
   send: '<svg viewBox="0 0 24 24"><path d="M3.2 11.4 20.4 3.3c.9-.4 1.7.5 1.3 1.3L13.6 21.8c-.4.9-1.7.8-1.9-.2l-1.6-6.5L3.5 13.3c-1-.2-1.2-1.5-.3-1.9z" fill="url(#gradSend)"/></svg>',
   logout: svg('<path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3M16 8l4 4-4 4M20 12H9"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
   back: svg('<path d="M15 5l-7 7 7 7"/>'),
   copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>'),
   trash: svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>'),
@@ -160,6 +161,18 @@ const S = {
 const TY = { enabled: true, ttl: 6000, every: 3000 };
 /* leesbewijzen: aan tenzij config/features.readReceipts op false staat EN jij ze niet zelf uitzet (Instellingen -> Privacy) */
 const RR = { enabled: true, every: 3000 };
+
+/* abonnementen: de functielijst staat in Firestore (collectie `features`), prijzen in config/plans */
+const FEATURES = [];
+const PLANCFG = {};
+const SUB = { mine: null, pending: [] };
+let plansView = null;
+const DEFAULT_FEATURES = [
+  { id: 'd1', name: 'Berichten, vrienden en servers', free: true, plus: true, prime: true, order: 1 },
+  { id: 'd2', name: 'Eigen profielkleuren en banner', free: false, plus: true, prime: true, order: 2 },
+  { id: 'd3', name: 'Grotere bestanden versturen', free: false, plus: false, prime: true, order: 3 },
+  { id: 'd4', name: 'Exclusieve emoji en badges', free: false, plus: false, prime: true, order: 4 }
+];
 
 const pairId = (a, b) => [a, b].sort().join('_');
 const accepted = () => S.friendships.filter(f => f.status === 'accepted');
@@ -286,7 +299,7 @@ function startListeners() {
 
   S.unsub.friends = onSnapshot(query(collection(db, 'friendships'), where('users', 'array-contains', uid)), snap => {
     S.friendships = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    syncChatMeta(); scheduleWatch(); checkNewRequests();
+    syncChatMeta(); syncUnread(); scheduleWatch(); checkNewRequests();
     renderTabs(); scheduleSidebar();
     if (S.tab === 'friends') renderFriendList();
     if (S.tab === 'requests') renderRequestLists();
@@ -318,6 +331,25 @@ function startListeners() {
   S.unsub.badges = onSnapshot(collection(db, 'badges'), snap => {
     BADGES.length = 0;
     snap.forEach(d => BADGES.push({ id: d.id, ...d.data() }));
+    syncModWatch(); renderPremiumBadge(); plansView?.render();
+  }, () => {});
+
+  // functies per abonnement: Firestore -> features -> <id> { name, free, plus, prime, order }
+  S.unsub.features = onSnapshot(collection(db, 'features'), snap => {
+    FEATURES.length = 0;
+    snap.forEach(d => FEATURES.push({ id: d.id, ...d.data() }));
+    plansView?.render();
+  }, () => {});
+  // prijzen (optioneel): Firestore -> config -> plans -> plusPrice / primePrice
+  S.unsub.plans = onSnapshot(doc(db, 'config', 'plans'), s => {
+    for (const k of Object.keys(PLANCFG)) delete PLANCFG[k];
+    if (s.exists()) Object.assign(PLANCFG, s.data());
+    plansView?.render();
+  }, () => {});
+  // mijn eigen abonnementsaanvraag
+  S.unsub.sub = onSnapshot(doc(db, 'subscriptions', uid), s => {
+    SUB.mine = s.exists() ? s.data({ serverTimestamps: 'estimate' }) : null;
+    announceDecision(); plansView?.render();
   }, () => {});
 
   startPresence();
@@ -354,8 +386,10 @@ function unsubChat() { stopTypingWatch(); stopReadWatch(); clearTimeout(S.chat?.
 function teardown() {
   stopPresence();
   unsubChat();
-  for (const k of ['profile', 'friends', 'servers', 'config', 'badges']) { S.unsub[k]?.(); S.unsub[k] = null; }
-  BADGES.length = 0;
+  for (const k of ['profile', 'friends', 'servers', 'config', 'badges', 'features', 'plans', 'sub', 'mods']) { S.unsub[k]?.(); S.unsub[k] = null; }
+  BADGES.length = 0; FEATURES.length = 0; SUB.mine = null; SUB.pending = [];
+  for (const k of Object.keys(PLANCFG)) delete PLANCFG[k];
+  stopUnread(); renderPremiumBadge();
   Object.values(S.metaUnsub).forEach(u => u());
   Object.assign(S, { me: null, profile: null, friendships: [], meta: {}, metaUnsub: {}, servers: [], activeDm: null, activeServer: null, started: false, tab: 'dms', metaSeen: {}, reqSeen: null });
   for (const k of Object.keys(PROF)) delete PROF[k];
@@ -414,11 +448,12 @@ function renderSidebar() {
     const m = S.meta[f.id];
     const preview = m?.lastText ? (m.lastUid === S.me.uid ? 'Jij: ' : '') + m.lastText : 'Begin een gesprek';
     list.append(h('button', {
-      class: 'item' + (S.activeDm === f.id && S.tab === 'dms' ? ' active' : ''),
+      class: 'item' + (S.activeDm === f.id && S.tab === 'dms' ? ' active' : '') + (unreadOf(f.id) ? ' has-unread' : ''),
       onclick: () => { S.activeDm = f.id; if (S.tab !== 'dms') { S.tab = 'dms'; renderTabs(); } renderSidebar(); showMain(); }
     },
       dotted(otherId(f), otherName(f), 42),
       h('span', { class: 'item-text' }, h('b', { text: otherName(f) }), h('small', { text: preview })),
+      unreadBadge(f.id),
       pbadge(otherId(f))));
   }
 }
@@ -693,8 +728,9 @@ function renderMessages(msgs) {
 
   const last = msgs[msgs.length - 1];
   S.chat.newest = last ? { id: last.id, uid: last.uid } : null;
+  S.chat.lastMillis = last?.createdAt?.toMillis?.() || 0;
   S.chat.lastMineAt = lastMine?.createdAt?.toMillis?.() || 0;
-  markRead(); updateReceipt();
+  markRead(); updateReceipt(); seenOpenDm();
   if (last && last.id !== S.chat.lastId) {
     if (S.chat.lastId && last.uid !== S.me.uid) delete S.chat.seen[last.uid];
     S.chat.lastId = last.id;
@@ -826,7 +862,7 @@ function renderRequestLists() {
 
 /* =====================  servers  ===================== */
 const dlg = $('#dlg');
-const openDialog = (...nodes) => { dlg.classList.remove('wide'); dlg.replaceChildren(h('div', { class: 'dlg-in' }, ...nodes)); if (!dlg.open) dlg.showModal(); };
+const openDialog = (...nodes) => { dlg.classList.remove('wide', 'plans'); dlg.replaceChildren(h('div', { class: 'dlg-in' }, ...nodes)); if (!dlg.open) dlg.showModal(); };
 const closeDialog = () => { if (dlg.open) dlg.close(); };
 dlg.addEventListener('click', e => { if (e.target === dlg) closeDialog(); });
 
@@ -1174,7 +1210,7 @@ async function openMembers() {
   await Promise.all(s0.members.map(nameOf));
   if (membersView) render();
 }
-dlg.addEventListener('close', () => { membersView = null; });
+dlg.addEventListener('close', () => { membersView = null; plansView = null; });
 
 /* =====================  instellingen, meldingen & profiel  =====================
    Instellingen (thema, achtergrond, meldingen) staan per apparaat in localStorage.
@@ -1339,7 +1375,7 @@ function renderSettings() {
       tog('desktop', 'Bureaubladmeldingen', 'Een melding van je browser als de site op de achtergrond staat.', askDesktop),
       tog('dm', 'Directe berichten', 'Een melding bij een nieuw bericht van een vriend.'),
       tog('server', 'Servers', 'Alleen voor de server die open staat terwijl de site op de achtergrond is.'),
-      tog('requests', 'Vriendschapsverzoeken', 'Een melding als iemand je een verzoek stuurt.'),
+      tog('requests', 'Verzoeken', 'Een melding bij een vriendschapsverzoek, een abonnementsaanvraag (moderators) en als jouw aanvraag is beoordeeld.'),
       tog('sound', 'Geluid', 'Een kort geluidje bij elke melding.'),
       tog('preview', 'Berichttekst tonen', 'Uit = je ziet alleen dat er een bericht is, niet wat erin staat.'),
       permNote,
@@ -1702,17 +1738,244 @@ document.addEventListener('click', e => {
   openProfile(a.dataset.uid);
 }, true);
 
-/* =====================  premium-knop  ===================== */
-$('#premiumBtn').addEventListener('click', () => {
+/* =====================  ongelezen berichten (rode teller bij DM's)  =====================
+   Per vriend luisteren we naar de (max. 10) berichten van na het laatste moment dat je dat gesprek las.
+   Dat moment bewaren we per apparaat in localStorage, dus het werkt ook als je leesbewijzen uit hebt staan. */
+const UNREAD = { on: false, unsub: {}, ids: {} };
+let LR = {};
+const lrKey = () => 'infinitum-lastread-' + S.me.uid;
+const saveLR = () => { try { localStorage.setItem(lrKey(), JSON.stringify(LR)); } catch {} };
+const lastReadOf = (id) => Math.max(LR[id] || 0, LR._since || 0);
+const unreadOf = (id) => UNREAD.ids[id]?.size || 0;
+const unreadText = (n) => (n > 9 ? '9+' : String(n));
+function unreadBadge(id) {
+  const n = unreadOf(id);
+  return n ? h('span', { class: 'unread', 'aria-label': `${n} ongelezen`, text: unreadText(n) }) : null;
+}
+function renderUnread() {
+  const total = Object.values(UNREAD.ids).reduce((a, m) => a + m.size, 0);
+  const bd = $('#dmBadge');
+  if (bd) { bd.hidden = !total; bd.textContent = unreadText(total); }
+  document.title = total ? `(${unreadText(total)}) Infinitum` : 'Infinitum';
+  scheduleSidebar();
+}
+const isOpenDm = (id) => S.tab === 'dms' && S.activeDm === id && S.chat?.type === 'dm' && S.chat.id === id && isVisible() && document.hasFocus();
+function markSeen(id) {
+  const m = UNREAD.ids[id];
+  const t = Math.max(S.chat?.id === id ? (S.chat.lastMillis || 0) : 0, ...(m ? [...m.values()] : [0]));
+  const had = m?.size;
+  if (t > (LR[id] || 0)) { LR[id] = t; saveLR(); }
+  if (m) m.clear();
+  if (had) renderUnread();
+}
+function seenOpenDm() { const c = S.chat; if (c?.type === 'dm' && isOpenDm(c.id)) markSeen(c.id); }
+window.addEventListener('focus', seenOpenDm);
+document.addEventListener('visibilitychange', seenOpenDm);
+
+function syncUnread() {
+  if (!S.me) return;
+  if (!UNREAD.on) {
+    UNREAD.on = true;
+    try { LR = JSON.parse(localStorage.getItem(lrKey()) || '{}') || {}; } catch { LR = {}; }
+    if (!LR._since) { LR._since = Date.now(); saveLR(); }   // oude berichten van voor het eerste gebruik tellen niet mee
+  }
+  const ids = new Set(accepted().map(f => f.id));
+  for (const id of Object.keys(UNREAD.unsub)) {
+    if (!ids.has(id)) { UNREAD.unsub[id](); delete UNREAD.unsub[id]; delete UNREAD.ids[id]; }
+  }
+  for (const id of ids) {
+    if (UNREAD.unsub[id]) continue;
+    UNREAD.ids[id] = new Map();
+    const q = query(collection(db, 'chats', id, 'messages'),
+      where('createdAt', '>', Timestamp.fromMillis(lastReadOf(id))), orderBy('createdAt', 'desc'), limit(10));
+    UNREAD.unsub[id] = onSnapshot(q, snap => {
+      const m = UNREAD.ids[id]; if (!m) return;
+      for (const ch of snap.docChanges()) {
+        if (ch.type === 'removed') { m.delete(ch.doc.id); continue; }
+        const d = ch.doc.data({ serverTimestamps: 'estimate' });
+        if (d.uid === S.me?.uid) continue;
+        const t = d.createdAt?.toMillis?.() || Date.now();
+        if (t > lastReadOf(id)) m.set(ch.doc.id, t);
+      }
+      if (isOpenDm(id)) markSeen(id); else renderUnread();
+    }, () => {});
+  }
+  renderUnread();
+}
+function stopUnread() {
+  for (const u of Object.values(UNREAD.unsub)) u();
+  UNREAD.unsub = {}; UNREAD.ids = {}; UNREAD.on = false; LR = {};
+  renderUnread();
+}
+
+/* =====================  abonnementen: Infinitum / Infinitum+ / Infinitum Prime  =====================
+   - Functies per versie: Firestore -> features -> <id> { name, free, plus, prime, order }  (true = vinkje, false = kruis, tekst = die tekst)
+   - Prijzen (optioneel): Firestore -> config -> plans { plusPrice, primePrice }
+   - Aanvragen: Firestore -> subscriptions -> <uid> { username, tier, status: pending | approved | rejected, ... }
+   - Moderators = de uid's in het veld `users` van het badge-document met id `moderator`. */
+const TIER_ORDER = ['free', 'plus', 'prime'];
+const isMod = () => !!S.me && BADGES.some(b => b.id === 'moderator' && Array.isArray(b.users) && b.users.includes(S.me.uid));
+const othersPending = () => SUB.pending.filter(r => r.uid !== S.me?.uid);
+
+function renderPremiumBadge() {
+  const el = $('#premBadge'); if (!el) return;
+  const n = S.me && isMod() ? othersPending().length : 0;
+  el.hidden = !n; el.textContent = unreadText(n);
+}
+
+// melding: toast als je kijkt, anders een bureaubladmelding
+function inform(title, text) {
+  if (manualState() === 'dnd') return;
+  if (isVisible() && document.hasFocus()) { toast(`${title}: ${text}`); return; }
+  notify('requests', title, text, openPlans);
+}
+
+// jouw aanvraag is goedgekeurd of afgewezen -> je krijgt eenmalig bericht (ook als je offline was)
+function announceDecision() {
+  const sub = SUB.mine;
+  if (!S.me || !sub || sub.status === 'pending' || !sub.decidedAt?.toMillis) return;
+  if (manualState() === 'dnd') return;
+  const stamp = sub.status + ':' + sub.decidedAt.toMillis();
+  let last = ''; try { last = localStorage.getItem('infinitum-subseen-' + S.me.uid) || ''; } catch {}
+  if (last === stamp) return;
+  try { localStorage.setItem('infinitum-subseen-' + S.me.uid, stamp); } catch {}
+  const name = TIERS[sub.tier]?.name || 'Abonnement';
+  if (sub.status === 'approved') inform(name, 'is geactiveerd! 🎉');
+  else inform(name, 'je aanvraag is helaas afgewezen.');
+}
+
+// moderators luisteren naar alle openstaande aanvragen
+function syncModWatch() {
+  const want = isMod();
+  if (want && !S.unsub.mods) {
+    let primed = false;
+    S.unsub.mods = onSnapshot(query(collection(db, 'subscriptions'), where('status', '==', 'pending')), snap => {
+      SUB.pending = snap.docs.map(d => ({ uid: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+      if (primed) {
+        for (const ch of snap.docChanges()) {
+          if (ch.type !== 'added' || ch.doc.metadata.hasPendingWrites || ch.doc.id === S.me?.uid) continue;
+          const d = ch.doc.data();
+          inform(d.username || 'Iemand', `vraagt ${TIERS[d.tier]?.name || 'een abonnement'} aan — keur hem goed bij Premium.`);
+        }
+      }
+      primed = true;
+      renderPremiumBadge(); plansView?.render();
+    }, () => {});
+  } else if (!want && S.unsub.mods) {
+    S.unsub.mods(); S.unsub.mods = null; SUB.pending = [];
+    renderPremiumBadge(); plansView?.render();
+  }
+}
+
+async function requestTier(tier) {
+  if (!S.me || tierKey(S.profile) === tier || !TIERS[tier] || tier === 'free') return;
+  try {
+    await setDoc(doc(db, 'subscriptions', S.me.uid), { username: S.profile?.username || 'Onbekend', tier, status: 'pending', requestedAt: serverTimestamp() });
+    toast(`Aanvraag voor ${TIERS[tier].name} verstuurd. Een moderator keurt hem binnenkort goed.`);
+  } catch (e) { toast(fbErr(e)); }
+}
+async function cancelRequest() {
+  try { await deleteDoc(doc(db, 'subscriptions', S.me.uid)); toast('Aanvraag geannuleerd.'); }
+  catch (e) { toast(fbErr(e)); }
+}
+async function decideRequest(r, ok, btns) {
+  btns.forEach(b => { b.disabled = true; });
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'subscriptions', r.uid), { status: ok ? 'approved' : 'rejected', decidedBy: S.me.uid, decidedAt: serverTimestamp() });
+    if (ok) batch.update(doc(db, 'users', r.uid), { tier: r.tier });
+    await batch.commit();
+    toast(ok ? `${r.username || 'Gebruiker'} heeft nu ${TIERS[r.tier]?.name}.` : `Aanvraag van ${r.username || 'gebruiker'} afgewezen.`);
+  } catch (e) { toast(fbErr(e)); btns.forEach(b => { b.disabled = false; }); }
+}
+
+function featureCell(v, cur) {
+  const c = cur ? ' cur' : '';
+  if (v === true) return h('div', { class: 'pg-c yes' + c, html: I.check, role: 'img', 'aria-label': 'Inbegrepen' });
+  if (typeof v === 'string' && v.trim()) return h('div', { class: 'pg-c txt' + c, text: v.trim().slice(0, 30) });
+  return h('div', { class: 'pg-c no' + c, html: I.x, role: 'img', 'aria-label': 'Niet inbegrepen' });
+}
+
+function planAction(t, mine, sub) {
+  if (mine === t) return h('span', { class: 'pg-tag ok', text: 'Jouw abonnement' });
+  if (t === 'free') return null;
+  if (sub?.status === 'pending' && sub.tier === t) {
+    return h('div', { class: 'pg-pend' }, h('span', { class: 'pg-tag', text: 'In behandeling' }),
+      h('button', { class: 'linkish', type: 'button', text: 'Annuleren', onclick: cancelRequest }));
+  }
+  const again = sub?.status === 'rejected' && sub.tier === t;
+  const label = again ? 'Opnieuw aanvragen' : TIER_ORDER.indexOf(t) < TIER_ORDER.indexOf(mine) ? 'Overstappen' : 'Abonneer';
+  return h('button', { class: 'glow sm', type: 'button', text: label, onclick: () => requestTier(t) });
+}
+
+function buildPlans() {
+  const mine = tierKey(S.profile), sub = SUB.mine, out = [];
+
+  // status voor de gebruiker zelf
+  const subName = sub ? (TIERS[sub.tier]?.name || 'abonnement') : '';
+  let st;
+  if (sub?.status === 'pending') st = ['pend', `Je aanvraag voor ${subName} is verstuurd. Een moderator moet hem nog goedkeuren. Je krijgt een melding zodra hij is beoordeeld.`];
+  else if (sub?.status === 'rejected' && mine !== sub.tier) st = ['bad', `Je aanvraag voor ${subName} is afgewezen. Je kunt hem opnieuw aanvragen.`];
+  else if (mine !== 'free') st = ['ok', `Je hebt ${TIERS[mine].name}. Je abonnement is geactiveerd. 🎉`];
+  else st = ['info', 'Je gebruikt nu het gratis Infinitum. Je abonnement is nog niet geactiveerd.'];
+  out.push(h('p', { class: 'plan-status ' + st[0], text: st[1] }));
+
+  // vergelijking
+  const rows = [...(FEATURES.length ? FEATURES : DEFAULT_FEATURES)]
+    .filter(f => f && f.name)
+    .sort((a, b) => (Number.isFinite(+a.order) ? +a.order : 999) - (Number.isFinite(+b.order) ? +b.order : 999) || String(a.name).localeCompare(String(b.name)));
+  const grid = h('div', { class: 'plan-grid' }, h('div', { class: 'pg-h pg-corner' }));
+  for (const t of TIER_ORDER) {
+    grid.append(h('div', { class: 'pg-h' + (mine === t ? ' cur' : '') },
+      h('img', { class: 'pg-ic', src: TIERS[t].icon, alt: '' }),
+      h('b', { text: TIERS[t].name }),
+      h('small', { text: t === 'free' ? 'Gratis' : String(PLANCFG[t + 'Price'] || '') })));
+  }
+  for (const f of rows) {
+    grid.append(h('div', { class: 'pg-f', text: String(f.name) }));
+    for (const t of TIER_ORDER) grid.append(featureCell(f[t], mine === t));
+  }
+  grid.append(h('div', { class: 'pg-a pg-corner' }));
+  for (const t of TIER_ORDER) grid.append(h('div', { class: 'pg-a' + (mine === t ? ' cur' : '') }, planAction(t, mine, sub)));
+  out.push(h('div', { class: 'plan-scroll' }, grid));
+
+  out.push(h('p', { class: 'plan-how', text: 'Zo werkt het: klik bij een versie op Abonneer. Een moderator keurt je aanvraag goed, daarna wordt je abonnement geactiveerd en zie je dat hier.' }));
+
+  // moderators: aanvragen beoordelen
+  if (isMod()) {
+    const list = othersPending().sort((a, b) => (a.requestedAt?.toMillis?.() || 0) - (b.requestedAt?.toMillis?.() || 0));
+    loadProfiles(list.map(r => r.uid));
+    out.push(h('h4', { class: 'plans-sec', text: `Aanvragen ter goedkeuring — ${list.length}` }));
+    if (!list.length) out.push(h('p', { class: 'hint', text: 'Er zijn geen openstaande aanvragen.' }));
+    for (const r of list) {
+      const d = r.requestedAt?.toDate?.();
+      const ok = h('button', { class: 'btn-ok', type: 'button', text: 'Goedkeuren' });
+      const no = h('button', { class: 'btn-no', type: 'button', text: 'Afwijzen' });
+      ok.onclick = () => decideRequest(r, true, [ok, no]);
+      no.onclick = () => decideRequest(r, false, [ok, no]);
+      out.push(h('div', { class: 'row plan-req' },
+        avatar(r.uid, r.username, 40, true),
+        h('span', { class: 'item-text' }, h('b', { text: r.username || 'Onbekend' }),
+          h('small', { text: `vraagt ${TIERS[r.tier]?.name || 'een abonnement'} aan` + (d ? ` · ${dayLabel(d)} ${tf.format(d)}` : '') })),
+        h('div', { class: 'row-actions' }, ok, no)));
+    }
+  }
+  return out;
+}
+
+function openPlans() {
+  if (!S.me) return;
+  const body = h('div');
+  plansView = { render: () => body.replaceChildren(...buildPlans()) };
   openDialog(
-    h('img', { class: 'dlg-logo', src: 'assets/infinitum-logo-prime.svg', alt: 'Infinitum Prime' }),
-    h('p', { class: 'sub', text: 'Infinitum Premium komt eraan. Een voorproefje:' }),
-    h('ul', { class: 'perks' },
-      h('li', { text: '✦ Eigen profielkleuren en banner' }),
-      h('li', { text: '✦ Grotere bestanden versturen' }),
-      h('li', { text: '✦ Exclusieve emoji en badges' })),
+    h('h3', { text: 'Infinitum Premium' }),
+    h('p', { class: 'sub', text: 'Vergelijk de versies en vraag een abonnement aan.' }),
+    body,
     h('div', { class: 'dlg-actions' }, h('button', { class: 'ghost', type: 'button', onclick: closeDialog, text: 'Sluiten' })));
-});
+  dlg.classList.add('plans');
+  plansView.render();
+}
+$('#premiumBtn').addEventListener('click', openPlans);
 
 applyAppearance();
 setMode('login');

@@ -5,6 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#050816">
   <title>Infinitum Chat</title>
+  <script>
+    /* thema + achtergrond meteen toepassen (voorkomt een flits bij het laden) */
+    try {
+      var s = JSON.parse(localStorage.getItem('infinitum-settings') || '{}');
+      var t = s.theme || 'dark';
+      if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.dataset.theme = t;
+      document.documentElement.dataset.bg = s.bg || 'cosmos';
+    } catch (e) { document.documentElement.dataset.theme = 'dark'; }
+  </script>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -74,6 +84,7 @@
           <span class="me-name" id="meName">…</span>
           <input class="me-status" id="meStatus" maxlength="40" placeholder="Zet een status…" spellcheck="false" autocomplete="off">
         </div>
+        <button class="icon-btn" id="settingsBtn" type="button" title="Instellingen" aria-label="Instellingen"></button>
         <button class="icon-btn" id="logoutBtn" type="button" title="Uitloggen" aria-label="Uitloggen"></button>
       </div>
       <div class="flowline"></div>

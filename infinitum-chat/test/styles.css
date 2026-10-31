@@ -540,3 +540,7 @@ dialog.crop-dlg { width: min(540px, 94vw); }
 .tdots i:nth-child(3) { animation-delay: .3s; }
 @keyframes tdot { 0%, 60%, 100% { opacity: .3; transform: none; } 30% { opacity: 1; transform: translateY(-3px); } }
 @media (prefers-reduced-motion: reduce) { .tdots i { animation: none; opacity: .7; } }
+
+/* profielfoto in de zijbalk is klikbaar (instelbaar) */
+:root[data-pfclick="1"] #sideList .item .avatar[data-uid] { cursor: pointer; transition: box-shadow .15s; }
+:root[data-pfclick="1"] #sideList .item .avatar[data-uid]:hover { box-shadow: 0 0 0 2px rgba(124, 92, 255, .85); }

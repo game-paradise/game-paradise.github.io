@@ -39,24 +39,45 @@ const I = {
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   back: svg('<path d="M15 5l-7 7 7 7"/>'),
   copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>'),
-  trash: svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>')
+  trash: svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>'),
+  x: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
+  link: svg('<path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 4.43"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.33-1.33"/>'),
+  gear: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
 };
 
 function hash(s) { let x = 0; for (const c of String(s)) x = (x * 31 + c.charCodeAt(0)) >>> 0; return x; }
-function avatar(id, name, size = 40) {
-  const hu = hash(id) % 360;
-  return h('span', {
-    class: 'avatar',
-    style: `--s:${size}px;background:linear-gradient(135deg,hsl(${hu} 80% 62%),hsl(${(hu + 70) % 360} 80% 52%))`,
-    text: (String(name || '?').trim()[0] || '?').toUpperCase()
-  });
+const PROF = {};   // uid -> profieldata (live voor vrienden, eenmalig opgehaald voor anderen)
+const gradFor = (id) => { const hu = hash(id) % 360; return `linear-gradient(135deg,hsl(${hu} 80% 62%),hsl(${(hu + 70) % 360} 80% 52%))`; };
+const letterOf = (name) => (String(name || '?').trim()[0] || '?').toUpperCase();
+function paintAvatar(el) {
+  const src = el.dataset.uid && PROF[el.dataset.uid]?.avatar;
+  if (src) { el.style.background = `center / cover no-repeat url("${src}")`; el.textContent = ''; }
+  else { el.style.background = gradFor(el.dataset.gid); el.textContent = el.dataset.ch; }
+}
+// isUser = true: toont de profielfoto (als die er is) en opent bij klikken het profiel
+function avatar(id, name, size = 40, isUser = false) {
+  const el = h('span', { class: 'avatar', style: `--s:${size}px`, 'data-gid': id, 'data-ch': letterOf(name), 'data-uid': isUser ? id : null });
+  paintAvatar(el);
+  return el;
+}
+let avRaf = 0;
+function refreshAvatars() {
+  cancelAnimationFrame(avRaf);
+  avRaf = requestAnimationFrame(() => document.querySelectorAll('.avatar[data-gid]').forEach(paintAvatar));
+}
+function loadProfiles(uids) {
+  for (const u of new Set(uids)) {
+    if (!u || u in PROF) continue;
+    PROF[u] = null;
+    getDoc(doc(db, 'users', u)).then(s => { PROF[u] = s.exists() ? s.data() : null; refreshAvatars(); }).catch(() => {});
+  }
 }
 
 // avatar met presence-bolletje; de kleur wordt live bijgewerkt door renderPresence()
 function dotted(uid, name, size = 40) {
   const d = h('i', { class: 'dot', 'data-uid': uid });
   setDot(d);
-  return h('span', { class: 'av-wrap', style: `--s:${size}px` }, avatar(uid, name, size), d);
+  return h('span', { class: 'av-wrap', style: `--s:${size}px` }, avatar(uid, name, size, true), d);
 }
 
 const tf = new Intl.DateTimeFormat('nl-NL', { hour: '2-digit', minute: '2-digit' });
@@ -105,7 +126,8 @@ const S = {
   me: null, profile: null, tab: 'dms',
   friendships: [], meta: {}, metaUnsub: {},
   servers: [], activeDm: null, activeServer: null,
-  chat: null, unsub: {}, pendingName: null, started: false
+  chat: null, unsub: {}, pendingName: null, started: false,
+  metaSeen: {}, reqSeen: null
 };
 
 const pairId = (a, b) => [a, b].sort().join('_');
@@ -228,12 +250,12 @@ onAuthStateChanged(auth, async (user) => {
 /* =====================  realtime  ===================== */
 function startListeners() {
   const uid = S.me.uid;
-  S.unsub.profile = onSnapshot(doc(db, 'users', uid), s => { S.profile = s.data() || null; renderUserCard(); },
+  S.unsub.profile = onSnapshot(doc(db, 'users', uid), s => { S.profile = s.data() || null; PROF[uid] = S.profile; renderUserCard(); refreshAvatars(); },
     e => console.error(e));
 
   S.unsub.friends = onSnapshot(query(collection(db, 'friendships'), where('users', 'array-contains', uid)), snap => {
     S.friendships = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    syncChatMeta(); scheduleWatch();
+    syncChatMeta(); scheduleWatch(); checkNewRequests();
     renderTabs(); scheduleSidebar();
     if (S.tab === 'friends') renderFriendList();
     if (S.tab === 'requests') renderRequestLists();
@@ -260,11 +282,27 @@ function startListeners() {
 function syncChatMeta() {
   const ids = new Set(accepted().map(f => f.id));
   for (const id of Object.keys(S.metaUnsub)) {
-    if (!ids.has(id)) { S.metaUnsub[id](); delete S.metaUnsub[id]; delete S.meta[id]; }
+    if (!ids.has(id)) { S.metaUnsub[id](); delete S.metaUnsub[id]; delete S.meta[id]; delete S.metaSeen[id]; }
   }
   for (const id of ids) {
     if (S.metaUnsub[id]) continue;
-    S.metaUnsub[id] = onSnapshot(doc(db, 'chats', id), s => { S.meta[id] = s.data() || null; scheduleSidebar(); }, () => {});
+    S.metaUnsub[id] = onSnapshot(doc(db, 'chats', id), s => {
+      const prev = S.meta[id], cur = s.data() || null;
+      S.meta[id] = cur;
+      // nieuw bericht van de ander (niet bij het eerste laden, niet als je dat gesprek open hebt)
+      if (S.metaSeen[id] && cur && !s.metadata.hasPendingWrites && cur.lastUid && cur.lastUid !== S.me?.uid) {
+        const before = prev?.lastAt?.toMillis?.() || 0, now = cur.lastAt?.toMillis?.() || 0;
+        const open = S.tab === 'dms' && S.activeDm === id && isVisible();
+        if (now > before && !open) {
+          const f = accepted().find(x => x.id === id);
+          notify('dm', f ? otherName(f) : 'Nieuw bericht', cur.lastText || '', () => {
+            S.activeDm = id; S.tab = 'dms'; renderTabs(); renderSidebar(); showMain();
+          });
+        }
+      }
+      S.metaSeen[id] = true;
+      scheduleSidebar();
+    }, () => {});
   }
 }
 
@@ -274,7 +312,8 @@ function teardown() {
   unsubChat();
   for (const k of ['profile', 'friends', 'servers']) { S.unsub[k]?.(); S.unsub[k] = null; }
   Object.values(S.metaUnsub).forEach(u => u());
-  Object.assign(S, { me: null, profile: null, friendships: [], meta: {}, metaUnsub: {}, servers: [], activeDm: null, activeServer: null, started: false, tab: 'dms' });
+  Object.assign(S, { me: null, profile: null, friendships: [], meta: {}, metaUnsub: {}, servers: [], activeDm: null, activeServer: null, started: false, tab: 'dms', metaSeen: {}, reqSeen: null });
+  for (const k of Object.keys(PROF)) delete PROF[k];
   $('#main').replaceChildren(); $('#sideList').replaceChildren(); $('#sideFoot').replaceChildren();
 }
 
@@ -287,6 +326,7 @@ function renderTabs() {
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === S.tab));
   const n = S.me ? incoming().length : 0;
   const bd = $('#reqBadge'); bd.hidden = !n; bd.textContent = n;
+  $('#settingsBtn').classList.toggle('active', S.tab === 'settings');
 }
 
 function renderUserCard() {
@@ -349,6 +389,7 @@ function showMain() {
   unsubChat();
   if (S.tab === 'friends') { renderFriends(); setView('main'); return; }
   if (S.tab === 'requests') { renderRequests(); setView('main'); return; }
+  if (S.tab === 'settings') { renderSettings(); setView('main'); return; }
   const type = S.tab === 'dms' ? 'dm' : 'server';
   const id = type === 'dm' ? S.activeDm : S.activeServer;
   if (id && (type === 'dm' ? dmInfo(id) : serverInfo(id))) { openChat(type, id); setView('main'); }
@@ -418,7 +459,16 @@ function openChat(type, id) {
       h('div', { class: 'box' }, ta),
       h('button', { class: 'glow send', type: 'button', title: 'Versturen', 'aria-label': 'Versturen', html: I.send, onclick: doSend })));
 
+  let primed = false;
   S.unsub.chat = onSnapshot(query(col, orderBy('createdAt', 'desc'), limit(100)), snap => {
+    // servermeldingen: alleen voor de server die open staat terwijl je tabblad op de achtergrond is
+    if (primed && type === 'server' && !snap.metadata.hasPendingWrites && !(isVisible() && document.hasFocus())) {
+      for (const ch of snap.docChanges()) {
+        const m = ch.type === 'added' ? ch.doc.data({ serverTimestamps: 'estimate' }) : null;
+        if (m && m.uid !== S.me.uid) notify('server', `${m.name || 'Onbekend'} in ${name}`, m.text, () => {});
+      }
+    }
+    primed = true;
     const msgs = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) })).reverse();
     renderMessages(msgs);
   }, e => { console.error(e); toast(fbErr(e)); });
@@ -452,6 +502,7 @@ document.addEventListener('keydown', e => {
 function renderMessages(msgs) {
   const list = $('#msgList'); if (!list || !S.chat) return;
   const nearBottom = S.chat.first || list.scrollHeight - list.scrollTop - list.clientHeight < 140;
+  loadProfiles(msgs.map(m => m.uid));
   list.replaceChildren();
   if (!msgs.length) list.append(h('p', { class: 'start', text: 'Dit is het begin van jullie gesprek. Zeg hallo! 👋' }));
 
@@ -464,7 +515,7 @@ function renderMessages(msgs) {
     const mine = m.uid === S.me.uid;
     list.append(h('div', { class: `msg ${mine ? 'mine' : 'theirs'}${grouped ? ' grouped' : ''}` },
       mine && h('button', { class: 'icon-btn del', type: 'button', title: 'Verwijderen', 'aria-label': 'Bericht verwijderen', html: I.trash, onclick: () => deleteMessage(m.id) }),
-      !mine && h('div', { class: 'msg-av' }, grouped ? null : avatar(m.uid, m.name, 34)),
+      !mine && h('div', { class: 'msg-av' }, grouped ? null : avatar(m.uid, m.name, 34, true)),
       h('div', { class: 'msg-body' },
         !grouped && h('div', { class: 'meta' }, !mine && h('b', { text: m.name || 'Onbekend' }), h('time', { text: tf.format(d) })),
         h('div', { class: 'bubble', text: m.text }))));
@@ -568,12 +619,13 @@ function renderRequests() {
 function renderRequestLists() {
   const rin = $('#reqIn'), rout = $('#reqOut'); if (!rin || !rout) return;
   const inc = incoming(), out = outgoing();
+  loadProfiles([...inc, ...out].map(otherId));
   $('#inCount').textContent = `Binnenkomend — ${inc.length}`;
   $('#outCount').textContent = `Verstuurd — ${out.length}`;
   const empty = (t) => h('p', { class: 'hint', text: t });
 
   rin.replaceChildren(...(inc.length ? inc.map(f => h('div', { class: 'row' },
-    avatar(otherId(f), otherName(f), 42),
+    avatar(otherId(f), otherName(f), 42, true),
     h('span', { class: 'item-text' }, h('b', { text: otherName(f) }), h('small', { text: 'wil vrienden worden' })),
     h('div', { class: 'row-actions' },
       h('button', {
@@ -586,7 +638,7 @@ function renderRequestLists() {
       })))) : [empty('Geen binnenkomende verzoeken.')]));
 
   rout.replaceChildren(...(out.length ? out.map(f => h('div', { class: 'row' },
-    avatar(otherId(f), otherName(f), 42),
+    avatar(otherId(f), otherName(f), 42, true),
     h('span', { class: 'item-text' }, h('b', { text: otherName(f) }), h('small', { text: 'wacht op antwoord' })),
     h('div', { class: 'row-actions' },
       h('button', {
@@ -597,7 +649,7 @@ function renderRequestLists() {
 
 /* =====================  servers  ===================== */
 const dlg = $('#dlg');
-const openDialog = (...nodes) => { dlg.replaceChildren(h('div', { class: 'dlg-in' }, ...nodes)); if (!dlg.open) dlg.showModal(); };
+const openDialog = (...nodes) => { dlg.classList.remove('wide'); dlg.replaceChildren(h('div', { class: 'dlg-in' }, ...nodes)); if (!dlg.open) dlg.showModal(); };
 const closeDialog = () => { if (dlg.open) dlg.close(); };
 dlg.addEventListener('click', e => { if (e.target === dlg) closeDialog(); });
 
@@ -752,8 +804,11 @@ function syncPresenceWatch() {
   }
   for (const u of want) {
     if (P.unsub[u]) continue;
-    P.unsub[u] = onSnapshot(doc(db, 'presence', u),
+    const offP = onSnapshot(doc(db, 'presence', u),
       s => { P.data[u] = s.exists() ? s.data() : null; renderPresence(); }, () => {});
+    const offU = onSnapshot(doc(db, 'users', u),
+      s => { PROF[u] = s.exists() ? s.data() : null; refreshAvatars(); }, () => {});
+    P.unsub[u] = () => { offP(); offU(); };
   }
   renderPresence();
 }
@@ -943,6 +998,318 @@ async function openMembers() {
 }
 dlg.addEventListener('close', () => { membersView = null; });
 
+/* =====================  instellingen, meldingen & profiel  =====================
+   Instellingen (thema, achtergrond, meldingen) staan per apparaat in localStorage.
+   Profielgegevens (foto, banner, bio, links) staan in users/{uid}. */
+const SET_KEY = 'infinitum-settings';
+const BGS = [
+  { id: 'cosmos', name: 'Kosmos', file: 'hero-background.svg' },
+  { id: 'aurora', name: 'Aurora', file: 'bg-aurora.svg' },
+  { id: 'sunset', name: 'Zonsondergang', file: 'bg-sunset.svg' },
+  { id: 'ocean', name: 'Oceaan', file: 'bg-ocean.svg' }
+];
+const CFG = (() => {
+  const def = { theme: 'dark', bg: 'cosmos', notif: { desktop: false, sound: true, dm: true, server: true, requests: true, preview: true } };
+  try {
+    const r = JSON.parse(localStorage.getItem(SET_KEY) || '{}');
+    return { ...def, ...r, notif: { ...def.notif, ...(r.notif || {}) } };
+  } catch { return def; }
+})();
+const saveSet = () => { try { localStorage.setItem(SET_KEY, JSON.stringify(CFG)); } catch {} };
+
+const lightMq = matchMedia('(prefers-color-scheme: light)');
+function applyAppearance() {
+  const r = document.documentElement;
+  const theme = CFG.theme === 'system' ? (lightMq.matches ? 'light' : 'dark') : CFG.theme;
+  r.dataset.theme = theme;
+  r.dataset.bg = BGS.some(b => b.id === CFG.bg) ? CFG.bg : 'cosmos';
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', theme === 'light' ? '#eef0ff' : '#050816');
+}
+lightMq.addEventListener?.('change', () => { if (CFG.theme === 'system') applyAppearance(); });
+
+$('#settingsBtn').innerHTML = I.gear;
+$('#settingsBtn').addEventListener('click', () => setTab('settings'));
+
+/* --- meldingen --- */
+let audioCtx;
+function beep() {
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    [[880, 0], [1175, .11]].forEach(([f, d]) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0, t + d);
+      g.gain.linearRampToValueAtTime(.12, t + d + .01);
+      g.gain.exponentialRampToValueAtTime(.001, t + d + .22);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t + d); o.stop(t + d + .25);
+    });
+  } catch {}
+}
+const canDesktop = () => 'Notification' in window && Notification.permission === 'granted';
+
+// kind: 'dm' | 'server' | 'requests'. Bij "Niet storen" komt er niets binnen.
+function notify(kind, title, body, go) {
+  if (!CFG.notif[kind] || manualState() === 'dnd') return;
+  if (CFG.notif.sound) beep();
+  const text = CFG.notif.preview ? body : 'Nieuw bericht';
+  if (isVisible() && document.hasFocus()) { toast(`${title}: ${text}`); return; }
+  if (CFG.notif.desktop && canDesktop()) {
+    try {
+      const n = new Notification(title, { body: text, icon: 'assets/favicon.svg', tag: 'infinitum-' + kind });
+      n.onclick = () => { window.focus(); go?.(); n.close(); };
+    } catch {}
+  }
+}
+function checkNewRequests() {
+  if (!S.me) return;
+  const inc = incoming();
+  if (S.reqSeen) {
+    for (const f of inc) if (!S.reqSeen.has(f.id)) notify('requests', otherName(f), 'wil vrienden worden', () => setTab('requests'));
+  }
+  S.reqSeen = new Set(inc.map(f => f.id));
+}
+function testNotify() {
+  if (CFG.notif.sound) beep();
+  if (CFG.notif.desktop && canDesktop()) {
+    try { new Notification('Infinitum', { body: 'Zo zien je meldingen eruit.', icon: 'assets/favicon.svg' }); } catch {}
+  } else toast('Zo zien je meldingen eruit. 🔔');
+}
+const permText = () => !('Notification' in window) ? 'Je browser ondersteunt geen bureaubladmeldingen.'
+  : Notification.permission === 'denied' ? 'Meldingen zijn geblokkeerd in je browser. Sta ze toe via het slotje naast de adresbalk.'
+  : Notification.permission === 'granted' ? 'De browser geeft toestemming voor bureaubladmeldingen.'
+  : 'De browser vraagt toestemming zodra je bureaubladmeldingen aanzet.';
+
+/* --- instellingenpagina --- */
+function renderSettings() {
+  const THEMES = [['dark', 'Donker', '🌙'], ['light', 'Licht', '☀️'], ['system', 'Systeem', '🖥️']];
+  const mark = () => {
+    themeBtns.forEach((el, i) => el.classList.toggle('active', THEMES[i][0] === CFG.theme));
+    bgBtns.forEach((el, i) => el.classList.toggle('active', BGS[i].id === CFG.bg));
+  };
+  const themeBtns = THEMES.map(([k, t, ic]) => h('button', {
+    class: 'opt', type: 'button',
+    onclick: () => { CFG.theme = k; saveSet(); applyAppearance(); mark(); }
+  }, h('span', { text: ic }), t));
+  const bgBtns = BGS.map(b => h('button', {
+    class: 'bg-opt', type: 'button', title: b.name,
+    onclick: () => { CFG.bg = b.id; saveSet(); applyAppearance(); mark(); }
+  }, h('span', { class: 'bg-thumb', style: `background-image:url(assets/${b.file})` }), h('span', { class: 'bg-name', text: b.name })));
+
+  const permNote = h('p', { class: 'perm-note', text: permText() });
+  const tog = (key, title, desc, onChange) => {
+    const cb = h('input', { type: 'checkbox' });
+    cb.checked = !!CFG.notif[key];
+    cb.addEventListener('change', async () => {
+      if (onChange && !(await onChange(cb.checked))) { cb.checked = !cb.checked; return; }
+      CFG.notif[key] = cb.checked; saveSet();
+    });
+    return h('label', { class: 'tog' }, h('span', { class: 'tog-text' }, h('b', { text: title }), h('small', { text: desc })), cb, h('i'));
+  };
+  const askDesktop = async (on) => {
+    if (!on) return true;
+    if (!('Notification' in window)) { permNote.textContent = permText(); return false; }
+    let p = Notification.permission;
+    if (p === 'default') { try { p = await Notification.requestPermission(); } catch {} }
+    permNote.textContent = permText();
+    return p === 'granted';
+  };
+
+  $('#main').replaceChildren(h('div', { class: 'pane settings' },
+    h('h2', { text: 'Instellingen' }),
+    h('p', { class: 'sub', text: 'Deze instellingen worden op dit apparaat bewaard.' }),
+    h('section', { class: 'set-card' },
+      h('h3', { text: 'Weergave' }),
+      h('p', { class: 'set-lbl', text: 'Thema' }), h('div', { class: 'opts' }, themeBtns),
+      h('p', { class: 'set-lbl', text: 'Achtergrond' }), h('div', { class: 'bg-grid' }, bgBtns)),
+    h('section', { class: 'set-card' },
+      h('h3', { text: 'Meldingen' }),
+      tog('desktop', 'Bureaubladmeldingen', 'Een melding van je browser als de site op de achtergrond staat.', askDesktop),
+      tog('dm', 'Directe berichten', 'Een melding bij een nieuw bericht van een vriend.'),
+      tog('server', 'Servers', 'Alleen voor de server die open staat terwijl de site op de achtergrond is.'),
+      tog('requests', 'Vriendschapsverzoeken', 'Een melding als iemand je een verzoek stuurt.'),
+      tog('sound', 'Geluid', 'Een kort geluidje bij elke melding.'),
+      tog('preview', 'Berichttekst tonen', 'Uit = je ziet alleen dat er een bericht is, niet wat erin staat.'),
+      permNote,
+      h('button', { class: 'ghost sm', type: 'button', onclick: testNotify, text: 'Testmelding sturen' }),
+      h('p', { class: 'perm-note', text: 'Staat je status op "Niet storen", dan krijg je geen meldingen.' })),
+    h('p', { class: 'hint', text: 'Tip: klik op je profielfoto linksboven om je foto, banner, bio en links aan te passen.' })));
+  mark();
+}
+
+/* --- links als knop (link-icoon + favicon + naam) --- */
+const BRAND = {
+  youtube: 'YouTube', youtu: 'YouTube', github: 'GitHub', instagram: 'Instagram', tiktok: 'TikTok', twitter: 'X', x: 'X',
+  twitch: 'Twitch', discord: 'Discord', spotify: 'Spotify', linkedin: 'LinkedIn', reddit: 'Reddit', facebook: 'Facebook',
+  steam: 'Steam', steampowered: 'Steam', soundcloud: 'SoundCloud', pinterest: 'Pinterest', snapchat: 'Snapchat',
+  telegram: 'Telegram', whatsapp: 'WhatsApp', paypal: 'PayPal', patreon: 'Patreon', kick: 'Kick', roblox: 'Roblox',
+  bsky: 'Bluesky', bluesky: 'Bluesky'
+};
+function parseLink(raw) {
+  let s = String(raw || '').trim();
+  if (!s || /\s/.test(s)) return null;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) s = 'https://' + s;
+  let u; try { u = new URL(s); } catch { return null; }
+  if (!/^https?:$/.test(u.protocol) || !u.hostname.includes('.')) return null;
+  const host = u.hostname.replace(/^www\./, '').toLowerCase();
+  const parts = host.split('.');
+  let base = parts[parts.length - 2];
+  if (parts.length > 2 && parts[parts.length - 1].length === 2 && ['co', 'com', 'org', 'net', 'gov', 'ac'].includes(base)) base = parts[parts.length - 3];
+  const name = BRAND[base] || (base[0].toUpperCase() + base.slice(1));
+  return { href: u.href, host, name };
+}
+function linkChip(l, onRemove) {
+  const info = parseLink(l);   // altijd opnieuw controleren: alleen http(s)-links worden ooit een <a>
+  if (!info) return null;
+  const inner = [
+    h('span', { class: 'lk', html: I.link }),
+    h('img', {
+      class: 'fav', alt: '', loading: 'lazy', referrerpolicy: 'no-referrer',
+      onerror: e => e.target.remove(),
+      src: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(info.host)}&sz=64`
+    }),
+    h('span', { text: info.name })
+  ];
+  if (!onRemove) return h('a', { class: 'linkbtn', href: info.href, target: '_blank', rel: 'noopener noreferrer nofollow', title: info.href }, ...inner);
+  return h('span', { class: 'linkbtn' }, ...inner,
+    h('button', { class: 'lk-x', type: 'button', html: I.x, 'aria-label': 'Link verwijderen', onclick: onRemove }));
+}
+
+/* --- afbeeldingen kiezen, bijsnijden en verkleinen --- */
+async function cropImage(file, w, hh, maxLen) {
+  const bmp = await createImageBitmap(file);
+  const sc = Math.max(w / bmp.width, hh / bmp.height), cw = w / sc, ch = hh / sc;
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = hh;
+  const c = cv.getContext('2d');
+  c.fillStyle = '#0b1030'; c.fillRect(0, 0, w, hh);
+  c.drawImage(bmp, (bmp.width - cw) / 2, (bmp.height - ch) / 2, cw, ch, 0, 0, w, hh);
+  bmp.close?.();
+  for (const q of [.85, .7, .55, .4]) {
+    const out = cv.toDataURL('image/jpeg', q);
+    if (out.length <= maxLen) return out;
+  }
+  throw new Error('te groot');
+}
+function pickImage(w, hh, maxLen) {
+  return new Promise(res => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = async () => {
+      const f = inp.files[0];
+      if (!f) return res(null);
+      try { res(await cropImage(f, w, hh, maxLen)); }
+      catch { toast('Die afbeelding kon niet worden gebruikt.'); res(null); }
+    };
+    inp.click();
+  });
+}
+const imgBg = (src, id) => src ? `center / cover no-repeat url("${src}")` : gradFor(id);
+function paintBig(el, src, id, name) {
+  el.style.background = imgBg(src, id);
+  el.textContent = src ? '' : letterOf(name);
+}
+
+/* --- eigen profiel bewerken (klik op je profielfoto) --- */
+function openProfileEditor() {
+  const p = S.profile || {}, uid = S.me.uid, name = p.username || '?';
+  const d = { avatar: p.avatar || '', banner: p.banner || '', bio: p.bio || '', links: (p.links || []).filter(l => parseLink(l)) };
+  const err = h('p', { class: 'err' });
+
+  const banner = h('button', {
+    class: 'pf-banner', type: 'button', title: 'Banner wijzigen',
+    onclick: async () => { const s = await pickImage(720, 240, 140000); if (s) { d.banner = s; paint(); } }
+  }, h('span', { class: 'pf-cta', text: 'Banner wijzigen' }));
+  const av = h('span', { class: 'avatar big', style: '--s:88px' });
+  const avBtn = h('button', {
+    class: 'pf-av', type: 'button', title: 'Profielfoto wijzigen',
+    onclick: async () => { const s = await pickImage(160, 160, 38000); if (s) { d.avatar = s; paint(); } }
+  }, av, h('span', { class: 'pf-cta', text: 'Wijzig' }));
+  const rmAv = h('button', { class: 'ghost sm', type: 'button', text: 'Foto verwijderen', onclick: () => { d.avatar = ''; paint(); } });
+  const rmBanner = h('button', { class: 'ghost sm', type: 'button', text: 'Banner verwijderen', onclick: () => { d.banner = ''; paint(); } });
+  const paint = () => {
+    banner.style.background = imgBg(d.banner, uid + 'b');
+    paintBig(av, d.avatar, uid, name);
+    rmAv.hidden = !d.avatar; rmBanner.hidden = !d.banner;
+  };
+
+  const ta = h('textarea', { class: 'inp', rows: 3, maxlength: 200, placeholder: 'Vertel iets over jezelf…' });
+  ta.value = d.bio;
+  const cnt = h('small', { class: 'count' });
+  const upd = () => { cnt.textContent = `${ta.value.length}/200`; };
+  ta.addEventListener('input', upd); upd();
+
+  const chips = h('div', { class: 'chips' });
+  const renderLinks = () => chips.replaceChildren(...d.links.map((l, i) => linkChip(l, () => { d.links.splice(i, 1); renderLinks(); })));
+  const linkInp = h('input', { class: 'inp', maxlength: 200, autocomplete: 'off', placeholder: 'https://youtube.com/@jouwkanaal' });
+  const note = h('p', { class: 'note' });
+  const addLink = () => {
+    note.className = 'note'; note.textContent = '';
+    const bad = (t) => { note.textContent = t; note.className = 'note bad'; };
+    const info = parseLink(linkInp.value);
+    if (!info || info.href.length > 200) return bad('Dat is geen geldige link.');
+    if (d.links.length >= 6) return bad('Je kunt maximaal 6 links toevoegen.');
+    if (d.links.includes(info.href)) return bad('Deze link staat er al.');
+    d.links.push(info.href); linkInp.value = ''; renderLinks();
+  };
+  linkInp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addLink(); } });
+
+  const save = h('button', { class: 'glow', type: 'button', text: 'Opslaan' });
+  save.onclick = async () => {
+    save.disabled = true; err.textContent = '';
+    try {
+      await updateDoc(doc(db, 'users', uid), { bio: ta.value.trim().slice(0, 200), avatar: d.avatar, banner: d.banner, links: d.links });
+      closeDialog(); toast('Profiel opgeslagen.');
+    } catch (e) { err.textContent = fbErr(e); }
+    finally { save.disabled = false; }
+  };
+
+  openDialog(
+    h('h3', { text: 'Jouw profiel' }),
+    banner,
+    h('div', { class: 'pf-row' }, avBtn, h('div', { class: 'pf-rm' }, rmAv, rmBanner)),
+    h('label', { class: 'lbl', text: 'Bio' }), ta, cnt,
+    h('div', { class: 'pf-links' },
+      h('h4', { text: 'Links' }),
+      h('p', { class: 'sub', text: 'Plak een link naar een andere site. Hij verschijnt in je profiel als knop met het logo van de site.' }),
+      h('div', { class: 'addrow' }, linkInp, h('button', { class: 'ghost', type: 'button', onclick: addLink, text: 'Toevoegen' })),
+      note, chips),
+    err,
+    h('div', { class: 'dlg-actions' }, h('button', { class: 'ghost', type: 'button', onclick: closeDialog, text: 'Annuleren' }), save));
+  dlg.classList.add('wide');
+  paint(); renderLinks();
+}
+
+/* --- profiel van een ander bekijken --- */
+async function openProfile(uid) {
+  if (uid === S.me.uid) return openProfileEditor();
+  let d = PROF[uid];
+  try { const s = await getDoc(doc(db, 'users', uid)); if (s.exists()) d = s.data(); } catch {}
+  if (!d) { toast('Profiel niet gevonden.'); return; }
+  const f = accepted().find(x => otherId(x) === uid), st = presState(uid);
+  const links = (d.links || []).map(l => linkChip(l)).filter(Boolean);
+  const av = h('span', { class: 'avatar big', style: '--s:88px' });
+  paintBig(av, d.avatar, uid, d.username);
+  openDialog(
+    h('div', { class: 'pf-banner view', style: 'background:' + imgBg(d.banner, uid + 'b') }),
+    h('div', { class: 'pf-row' }, av),
+    h('h3', { text: d.username }),
+    h('p', { class: 'pf-state' }, sIcon(st), [LABEL[st], d.status].filter(Boolean).join(' · ')),
+    d.bio ? h('p', { class: 'pf-bio', text: d.bio }) : null,
+    links.length ? h('div', { class: 'pf-sec' }, h('h4', { text: 'Links' }), h('div', { class: 'chips' }, links)) : null,
+    h('div', { class: 'dlg-actions' },
+      f ? h('button', { class: 'btn-ok', type: 'button', text: 'Bericht', onclick: () => { closeDialog(); S.activeDm = f.id; S.tab = 'dms'; renderTabs(); renderSidebar(); showMain(); } }) : null,
+      h('button', { class: 'ghost', type: 'button', onclick: closeDialog, text: 'Sluiten' })));
+  dlg.classList.add('wide');
+}
+
+// klik op een profielfoto (niet die in knoppen/dialogen) opent het profiel
+document.addEventListener('click', e => {
+  const a = e.target.closest('.avatar[data-uid]');
+  if (!a || !S.me || a.closest('.item, dialog')) return;
+  openProfile(a.dataset.uid);
+});
+
 /* =====================  premium-knop  ===================== */
 $('#premiumBtn').addEventListener('click', () => {
   openDialog(
@@ -955,4 +1322,5 @@ $('#premiumBtn').addEventListener('click', () => {
     h('div', { class: 'dlg-actions' }, h('button', { class: 'ghost', type: 'button', onclick: closeDialog, text: 'Sluiten' })));
 });
 
+applyAppearance();
 setMode('login');

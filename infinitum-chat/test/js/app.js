@@ -248,7 +248,7 @@ async function ensureProfile(user) {
     }
     const batch = writeBatch(db);
     batch.set(doc(db, 'usernames', lower), { uid: user.uid });
-    batch.set(ref, { username: name, usernameLower: lower, status: '', createdAt: serverTimestamp() });
+    batch.set(ref, { username: name, usernameLower: lower, status: '', tier: 'free', createdAt: serverTimestamp() });
     await batch.commit(); // echte fouten (regels / database ontbreekt) komen hier naar boven
     S.pendingName = null;
     if (pend && name.toLowerCase() !== pend.toLowerCase()) toast(`"${pend}" was al bezet — je bent ${name} geworden.`);

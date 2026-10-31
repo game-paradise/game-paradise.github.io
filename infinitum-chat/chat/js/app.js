@@ -34,6 +34,7 @@ function h(tag, props, ...kids) {
 
 const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const I = {
+  eye: svg('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
   send: '<svg viewBox="0 0 24 24"><path d="M3.2 11.4 20.4 3.3c.9-.4 1.7.5 1.3 1.3L13.6 21.8c-.4.9-1.7.8-1.9-.2l-1.6-6.5L3.5 13.3c-1-.2-1.2-1.5-.3-1.9z" fill="url(#gradSend)"/></svg>',
   logout: svg('<path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3M16 8l4 4-4 4M20 12H9"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
@@ -136,6 +137,8 @@ const S = {
 
 /* typ-indicator: staat aan tenzij config/features.typingIndicators op false staat */
 const TY = { enabled: true, ttl: 6000, every: 3000 };
+/* leesbewijzen: aan tenzij config/features.readReceipts op false staat EN jij ze niet zelf uitzet (Instellingen -> Privacy) */
+const RR = { enabled: true, every: 3000 };
 
 const pairId = (a, b) => [a, b].sort().join('_');
 const accepted = () => S.friendships.filter(f => f.status === 'accepted');
@@ -286,8 +289,9 @@ function startListeners() {
   // noodschakelaar: Firestore -> config -> features -> typingIndicators (true/false)
   S.unsub.config = onSnapshot(doc(db, 'config', 'features'), s => {
     TY.enabled = s.exists() ? s.data().typingIndicators !== false : true;
-    if (S.chat) { TY.enabled ? startTypingWatch() : stopTypingWatch(); renderTyping(); }
-  }, () => { TY.enabled = false; stopTypingWatch(); renderTyping(); });
+    RR.enabled = s.exists() ? s.data().readReceipts !== false : true;
+    if (S.chat) { TY.enabled ? startTypingWatch() : stopTypingWatch(); renderTyping(); syncReadWatch(); }
+  }, () => { TY.enabled = false; RR.enabled = false; stopTypingWatch(); renderTyping(); syncReadWatch(); });
 
   startPresence();
 }
@@ -319,7 +323,7 @@ function syncChatMeta() {
   }
 }
 
-function unsubChat() { stopTypingWatch(); clearTimeout(S.chat?.typeT); S.unsub.chat?.(); S.unsub.chat = null; S.chat = null; scheduleWatch(); }
+function unsubChat() { stopTypingWatch(); stopReadWatch(); clearTimeout(S.chat?.typeT); S.unsub.chat?.(); S.unsub.chat = null; S.chat = null; scheduleWatch(); }
 function teardown() {
   stopPresence();
   unsubChat();
@@ -444,7 +448,7 @@ function buildHead(type, id) {
 function openChat(type, id) {
   unsubChat();
   const col = type === 'dm' ? collection(db, 'chats', id, 'messages') : collection(db, 'servers', id, 'messages');
-  S.chat = { type, id, col, first: true, seen: {}, lastPing: 0, lastId: null };
+  S.chat = { type, id, col, first: true, seen: {}, lastPing: 0, lastId: null, reads: {}, newest: null, markedId: null, lastRead: 0, lastMineAt: 0 };
   const name = type === 'dm' ? dmInfo(id).name : serverInfo(id).name;
 
   const ta = h('textarea', { id: 'msgInput', rows: 1, maxlength: 2000, placeholder: type === 'dm' ? `Bericht aan ${name}` : `Bericht in ${name}` });
@@ -486,6 +490,67 @@ function openChat(type, id) {
   if (matchMedia('(min-width: 801px)').matches) ta.focus();
   scheduleWatch(); renderPresence();
   startTypingWatch();
+  syncReadWatch();
+}
+
+/* =====================  leesbewijzen  ===================== */
+// Per gesprek: <chat of server>/reads/<uid> met { at } = het moment waarop jij voor het laatst alles las.
+// Eén schrijfactie per 3 s, alleen als er iets nieuws van een ander is en het tabblad open + actief is.
+// Een bericht is gelezen door iemand als diens `at` na het bericht ligt. Het oogje staat onder je laatste bericht.
+function startReadWatch() {
+  const c = S.chat;
+  if (!rrOn() || !c || c.readUnsub) return;
+  c.readsCol = collection(c.col.parent, 'reads');
+  c.readUnsub = onSnapshot(c.readsCol, snap => {
+    if (S.chat !== c) return;
+    for (const ch of snap.docChanges()) {
+      if (ch.type === 'removed') { delete c.reads[ch.doc.id]; continue; }
+      c.reads[ch.doc.id] = ch.doc.data({ serverTimestamps: 'estimate' }).at?.toMillis?.() || 0;
+    }
+    updateReceipt();
+  }, () => {});
+}
+
+function stopReadWatch() {
+  const c = S.chat;
+  if (!c) return;
+  clearTimeout(c.readT);
+  c.readUnsub?.(); c.readUnsub = null;
+  c.reads = {};
+}
+
+function syncReadWatch() {
+  if (!S.chat) return;
+  if (rrOn()) { startReadWatch(); markRead(); } else stopReadWatch();
+  updateReceipt();
+}
+
+function markRead() {
+  const c = S.chat;
+  if (!rrOn() || !c?.readsCol || !c.newest || c.newest.uid === S.me.uid || c.markedId === c.newest.id) return;
+  if (!isVisible() || !document.hasFocus() || activeManual() === 'invisible') return;
+  clearTimeout(c.readT);
+  const wait = c.lastRead + RR.every - Date.now();
+  if (wait > 0) { c.readT = setTimeout(markRead, wait); return; }
+  c.markedId = c.newest.id; c.lastRead = Date.now();
+  setDoc(doc(c.readsCol, S.me.uid), { at: serverTimestamp() }).catch(() => { if (S.chat === c) c.markedId = null; });
+}
+window.addEventListener('focus', () => markRead());
+document.addEventListener('visibilitychange', () => markRead());
+
+function updateReceipt() {
+  const el = $('#receipt'), c = S.chat;
+  if (!el || !c) return;
+  el.replaceChildren();
+  if (!rrOn() || !c.lastMineAt) return;
+  const allowed = new Set(c.type === 'dm' ? [dmInfo(c.id)?.uid] : (serverInfo(c.id)?.members || []));
+  const readers = Object.entries(c.reads).filter(([u, at]) => u !== S.me.uid && allowed.has(u) && at >= c.lastMineAt).map(([u]) => u);
+  if (!readers.length) return;
+  const names = readers.map(u => PROF[u]?.username).filter(Boolean).slice(0, 10).join(', ');
+  el.append(h('span', {
+    class: 'rcpt', title: names ? 'Gelezen door ' + names : 'Gelezen',
+    'aria-label': c.type === 'server' ? `Gelezen door ${readers.length}` : 'Gelezen'
+  }, h('span', { class: 'rcpt-ic', html: I.eye }), c.type === 'server' ? h('b', { text: String(readers.length) }) : null));
 }
 
 /* =====================  typ-indicator  ===================== */
@@ -577,6 +642,7 @@ function renderMessages(msgs) {
   list.replaceChildren();
   if (!msgs.length) list.append(h('p', { class: 'start', text: 'Dit is het begin van jullie gesprek. Zeg hallo! 👋' }));
 
+  const lastMine = [...msgs].reverse().find(x => x.uid === S.me.uid);
   let prev = null;
   for (const m of msgs) {
     const d = m.createdAt?.toDate?.() || new Date();
@@ -589,13 +655,17 @@ function renderMessages(msgs) {
       !mine && h('div', { class: 'msg-av' }, grouped ? null : avatar(m.uid, PROF[m.uid]?.username || m.name, 34, true)),
       h('div', { class: 'msg-body' },
         !grouped && h('div', { class: 'meta' }, !mine && h('b', { text: PROF[m.uid]?.username || m.name || 'Onbekend' }), h('time', { text: tf.format(d) })),
-        h('div', { class: 'bubble', text: m.text }))));
+        h('div', { class: 'bubble', text: m.text }),
+        lastMine && m.id === lastMine.id ? h('div', { class: 'receipt', id: 'receipt' }) : null)));
     prev = { uid: m.uid, d };
   }
   if (nearBottom) list.scrollTop = list.scrollHeight;
   S.chat.first = false;
 
   const last = msgs[msgs.length - 1];
+  S.chat.newest = last ? { id: last.id, uid: last.uid } : null;
+  S.chat.lastMineAt = lastMine?.createdAt?.toMillis?.() || 0;
+  markRead(); updateReceipt();
   if (last && last.id !== S.chat.lastId) {
     if (S.chat.lastId && last.uid !== S.me.uid) delete S.chat.seen[last.uid];
     S.chat.lastId = last.id;
@@ -1088,15 +1158,16 @@ const BGS = [
   { id: 'ocean', name: 'Oceaan', file: 'bg-ocean.svg' }
 ];
 const CFG = (() => {
-  const def = { theme: 'dark', bg: 'cosmos', profileClick: true, notif: { desktop: false, sound: true, dm: true, server: true, requests: true, preview: true } };
+  const def = { theme: 'dark', bg: 'cosmos', profileClick: true, privacy: { readReceipts: true }, notif: { desktop: false, sound: true, dm: true, server: true, requests: true, preview: true } };
   try {
     const r = JSON.parse(localStorage.getItem(SET_KEY) || '{}');
-    return { ...def, ...r, notif: { ...def.notif, ...(r.notif || {}) } };
+    return { ...def, ...r, notif: { ...def.notif, ...(r.notif || {}) }, privacy: { ...def.privacy, ...(r.privacy || {}) } };
   } catch { return def; }
 })();
 const saveSet = () => { try { localStorage.setItem(SET_KEY, JSON.stringify(CFG)); } catch {} };
 
 // klik op een profielfoto in de zijbalk opent het profiel (instelbaar bij Instellingen -> Profielen)
+const rrOn = () => RR.enabled && CFG.privacy.readReceipts;
 const applyProfileClick = () => { document.documentElement.dataset.pfclick = CFG.profileClick ? '1' : ''; };
 applyProfileClick();
 
@@ -1210,6 +1281,17 @@ function renderSettings() {
       cb, h('i'));
   })();
 
+  const rrTog = (() => {
+    const cb = h('input', { type: 'checkbox' });
+    cb.checked = !!CFG.privacy.readReceipts;
+    cb.addEventListener('change', () => { CFG.privacy.readReceipts = cb.checked; saveSet(); syncReadWatch(); });
+    return h('label', { class: 'tog' },
+      h('span', { class: 'tog-text' },
+        h('b', { text: 'Leesbewijzen' }),
+        h('small', { text: 'Laat anderen met een oogje zien dat je hun bericht hebt gelezen. Uit = jij ziet ook niet wie jouw berichten leest.' })),
+      cb, h('i'));
+  })();
+
   $('#main').replaceChildren(h('div', { class: 'pane settings' },
     h('h2', { text: 'Instellingen' }),
     h('p', { class: 'sub', text: 'Deze instellingen worden op dit apparaat bewaard.' }),
@@ -1220,6 +1302,9 @@ function renderSettings() {
     h('section', { class: 'set-card' },
       h('h3', { text: 'Profielen' }),
       profTog),
+    h('section', { class: 'set-card' },
+      h('h3', { text: 'Privacy' }),
+      rrTog),
     h('section', { class: 'set-card' },
       h('h3', { text: 'Meldingen' }),
       tog('desktop', 'Bureaubladmeldingen', 'Een melding van je browser als de site op de achtergrond staat.', askDesktop),

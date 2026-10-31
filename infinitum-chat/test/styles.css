@@ -610,3 +610,29 @@ dialog.plans { width: min(780px, 96vw); }
 .plan-req { max-width: none; }
 .plan-req .row-actions { flex-wrap: wrap; justify-content: flex-end; }
 :root[data-theme="light"] .plan-status { background: var(--soft); }
+
+
+/* =====================  beheer: abonnees, tabel bewerken, berichten  ===================== */
+.plan-note { display: block; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.plan-edit { margin-top: 10px; }
+.plan-req { flex-wrap: wrap; }
+.plan-req .item-text { flex: 1 1 150px; min-width: 0; }
+.plan-req > .inp { flex: 1 1 100%; padding: 9px 12px; font-size: 14px; }
+.sub-row .row-actions select.inp { width: auto; min-width: 170px; margin: 0; padding: 9px 12px; }
+.fe [hidden] { display: none !important; }
+.fe-row { margin-bottom: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--soft); }
+.fe-top { display: flex; align-items: center; gap: 8px; }
+.fe-top .fe-name { flex: 1; min-width: 0; }
+.fe-top button { flex: none; }
+.fe-top .btn-no svg { width: 16px; height: 16px; }
+.fe-cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.fe-cell { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.fe-cell small { color: var(--muted); font-size: 12px; }
+.fe-cell .inp { margin: 0; padding: 9px 10px; font-size: 14px; }
+@media (max-width: 560px) { .fe-cells { grid-template-columns: 1fr; } }
+
+/* eigen links in de profiel-editor: aanklikbaar + kruisje */
+.linkbtn.editable { padding: 0 6px 0 0; gap: 2px; }
+.linkbtn.editable a.lb-open { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 4px 7px 11px; border-radius: 999px; color: inherit; text-decoration: none; }
+.linkbtn.editable a.lb-open:hover { background: rgba(124, 92, 255, .18); }
+.linkbtn.editable .lk-x { margin-right: 0; }

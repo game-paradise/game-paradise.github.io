@@ -154,7 +154,7 @@ const S = {
   friendships: [], meta: {}, metaUnsub: {},
   servers: [], activeDm: null, activeServer: null,
   chat: null, unsub: {}, pendingName: null, started: false,
-  metaSeen: {}, reqSeen: null
+  metaSeen: {}, reqSeen: null, settingsSeeded: false
 };
 
 /* typ-indicator: staat aan tenzij config/features.typingIndicators op false staat */
@@ -238,6 +238,7 @@ $('#aGoogle').addEventListener('click', async () => {
   }
 });
 $('#logoutBtn').addEventListener('click', async () => {
+  if (setTimer) saveSetNow();   // wachtende instellingen eerst naar Firebase
   await Promise.race([presenceGoOffline(), new Promise(r => setTimeout(r, 1500))]); // meteen offline tonen
   signOut(auth);
 });
@@ -297,6 +298,21 @@ function startListeners() {
   S.unsub.profile = onSnapshot(doc(db, 'users', uid), s => { S.profile = s.data() || null; PROF[uid] = S.profile; applyTier(); renderUserCard(); refreshAvatars(); },
     e => console.error(e));
 
+  // jouw instellingen (thema, meldingen, privacy): Firestore -> settings -> <jouw uid>
+  S.unsub.settings = onSnapshot(doc(db, 'settings', uid), s => {
+    if (!s.exists()) {
+      // eerste keer: zet de huidige (lokale) instellingen in je account
+      if (!s.metadata.fromCache && !S.settingsSeeded) { S.settingsSeeded = true; saveSetNow(); }
+      return;
+    }
+    if (s.metadata.hasPendingWrites || setTimer) return;   // eigen wijziging die nog onderweg is
+    const next = mergeCfg(s.data());
+    if (JSON.stringify(next) === JSON.stringify(CFG)) return;
+    Object.assign(CFG, next);
+    cacheLook(); applyAppearance(); applyProfileClick(); syncReadWatch();
+    if (S.tab === 'settings') renderSettings();
+  }, e => console.error(e));
+
   S.unsub.friends = onSnapshot(query(collection(db, 'friendships'), where('users', 'array-contains', uid)), snap => {
     S.friendships = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     syncChatMeta(); syncUnread(); scheduleWatch(); checkNewRequests();
@@ -331,7 +347,7 @@ function startListeners() {
   S.unsub.badges = onSnapshot(collection(db, 'badges'), snap => {
     BADGES.length = 0;
     snap.forEach(d => BADGES.push({ id: d.id, ...d.data() }));
-    syncModWatch(); renderPremiumBadge(); plansView?.render();
+    syncModWatch(); syncSubsWatch(); renderPremiumBadge(); plansView?.render();
   }, () => {});
 
   // functies per abonnement: Firestore -> features -> <id> { name, free, plus, prime, order }
@@ -386,12 +402,13 @@ function unsubChat() { stopTypingWatch(); stopReadWatch(); clearTimeout(S.chat?.
 function teardown() {
   stopPresence();
   unsubChat();
-  for (const k of ['profile', 'friends', 'servers', 'config', 'badges', 'features', 'plans', 'sub', 'mods']) { S.unsub[k]?.(); S.unsub[k] = null; }
-  BADGES.length = 0; FEATURES.length = 0; SUB.mine = null; SUB.pending = [];
+  for (const k of ['profile', 'friends', 'servers', 'config', 'badges', 'features', 'plans', 'sub', 'mods', 'settings', 'subs']) { S.unsub[k]?.(); S.unsub[k] = null; }
+  BADGES.length = 0; FEATURES.length = 0; SUB.mine = null; SUB.pending = []; SUBS.list = []; SUBS.ready = false;
+  resetPrivateCfg();
   for (const k of Object.keys(PLANCFG)) delete PLANCFG[k];
   stopUnread(); renderPremiumBadge();
   Object.values(S.metaUnsub).forEach(u => u());
-  Object.assign(S, { me: null, profile: null, friendships: [], meta: {}, metaUnsub: {}, servers: [], activeDm: null, activeServer: null, started: false, tab: 'dms', metaSeen: {}, reqSeen: null });
+  Object.assign(S, { me: null, profile: null, friendships: [], meta: {}, metaUnsub: {}, servers: [], activeDm: null, activeServer: null, started: false, tab: 'dms', metaSeen: {}, reqSeen: null, settingsSeeded: false });
   for (const k of Object.keys(PROF)) delete PROF[k];
   applyTier();   // favicon terug naar gewoon Infinitum
   $('#main').replaceChildren(); $('#sideList').replaceChildren(); $('#sideFoot').replaceChildren();
@@ -1210,10 +1227,11 @@ async function openMembers() {
   await Promise.all(s0.members.map(nameOf));
   if (membersView) render();
 }
-dlg.addEventListener('close', () => { membersView = null; plansView = null; });
+dlg.addEventListener('close', () => { membersView = null; plansView = null; syncSubsWatch(); });
 
 /* =====================  instellingen, meldingen & profiel  =====================
-   Instellingen (thema, achtergrond, meldingen) staan per apparaat in localStorage.
+   Instellingen (thema, achtergrond, meldingen, privacy) staan in Firestore: settings/{uid}, dus op al je apparaten hetzelfde.
+   In localStorage staat alleen een kopie van thema + achtergrond, zodat de pagina niet even in het verkeerde thema flitst.
    Profielgegevens (foto, banner, bio, links) staan in users/{uid}. */
 const SET_KEY = 'infinitum-settings';
 const BGS = [
@@ -1222,14 +1240,35 @@ const BGS = [
   { id: 'sunset', name: 'Zonsondergang', file: 'bg-sunset.svg' },
   { id: 'ocean', name: 'Oceaan', file: 'bg-ocean.svg' }
 ];
-const CFG = (() => {
-  const def = { theme: 'dark', bg: 'cosmos', profileClick: true, privacy: { readReceipts: true }, notif: { desktop: false, sound: true, dm: true, server: true, requests: true, preview: true } };
-  try {
-    const r = JSON.parse(localStorage.getItem(SET_KEY) || '{}');
-    return { ...def, ...r, notif: { ...def.notif, ...(r.notif || {}) }, privacy: { ...def.privacy, ...(r.privacy || {}) } };
-  } catch { return def; }
-})();
-const saveSet = () => { try { localStorage.setItem(SET_KEY, JSON.stringify(CFG)); } catch {} };
+const DEF_CFG = { theme: 'dark', bg: 'cosmos', profileClick: true, privacy: { readReceipts: true }, notif: { desktop: false, sound: true, dm: true, server: true, requests: true, preview: true } };
+const cloneDef = () => JSON.parse(JSON.stringify(DEF_CFG));
+// bouwt een geldige instellingen-set uit onbekende data (Firestore of de oude localStorage-versie)
+function mergeCfg(r) {
+  r = r && typeof r === 'object' ? r : {};
+  const o = cloneDef();
+  if (['dark', 'light', 'system'].includes(r.theme)) o.theme = r.theme;
+  if (BGS.some(b => b.id === r.bg)) o.bg = r.bg;
+  if (typeof r.profileClick === 'boolean') o.profileClick = r.profileClick;
+  if (typeof r.privacy?.readReceipts === 'boolean') o.privacy.readReceipts = r.privacy.readReceipts;
+  for (const k of Object.keys(o.notif)) if (typeof r.notif?.[k] === 'boolean') o.notif[k] = r.notif[k];
+  return o;
+}
+const CFG = (() => { try { return mergeCfg(JSON.parse(localStorage.getItem(SET_KEY) || '{}')); } catch { return cloneDef(); } })();
+function resetPrivateCfg() { const d = cloneDef(); CFG.profileClick = d.profileClick; CFG.privacy = d.privacy; CFG.notif = d.notif; }
+
+const cacheLook = () => { try { localStorage.setItem(SET_KEY, JSON.stringify({ theme: CFG.theme, bg: CFG.bg })); } catch {} };
+let setTimer = 0;
+function saveSetNow() {
+  clearTimeout(setTimer); setTimer = 0;
+  cacheLook();
+  if (!S.me) return;
+  setDoc(doc(db, 'settings', S.me.uid), {
+    theme: CFG.theme, bg: CFG.bg, profileClick: CFG.profileClick,
+    privacy: { readReceipts: CFG.privacy.readReceipts }, notif: { ...CFG.notif }
+  }).catch(e => toast(fbErr(e)));
+}
+// wijzigingen worden even gebundeld (bespaart schrijfacties op de gratis Firebase-versie)
+const saveSet = () => { cacheLook(); clearTimeout(setTimer); setTimer = setTimeout(saveSetNow, 700); };
 
 // klik op een profielfoto in de zijbalk opent het profiel (instelbaar bij Instellingen -> Profielen)
 const rrOn = () => RR.enabled && CFG.privacy.readReceipts;
@@ -1359,7 +1398,7 @@ function renderSettings() {
 
   $('#main').replaceChildren(h('div', { class: 'pane settings' },
     h('h2', { text: 'Instellingen' }),
-    h('p', { class: 'sub', text: 'Deze instellingen worden op dit apparaat bewaard.' }),
+    h('p', { class: 'sub', text: 'Deze instellingen worden bij je account bewaard en gelden op al je apparaten.' }),
     h('section', { class: 'set-card' },
       h('h3', { text: 'Weergave' }),
       h('p', { class: 'set-lbl', text: 'Thema' }), h('div', { class: 'opts' }, themeBtns),
@@ -1419,7 +1458,9 @@ function linkChip(l, onRemove) {
     h('span', { text: info.name })
   ];
   if (!onRemove) return h('a', { class: 'linkbtn', href: info.href, target: '_blank', rel: 'noopener noreferrer nofollow', title: info.href }, ...inner);
-  return h('span', { class: 'linkbtn' }, ...inner,
+  // in de profiel-editor: de link zelf is klikbaar (opent in een nieuw tabblad), het kruisje verwijdert hem
+  return h('span', { class: 'linkbtn editable' },
+    h('a', { class: 'lb-open', href: info.href, target: '_blank', rel: 'noopener noreferrer nofollow', title: 'Openen: ' + info.href }, ...inner),
     h('button', { class: 'lk-x', type: 'button', html: I.x, 'aria-label': 'Link verwijderen', onclick: onRemove }));
 }
 
@@ -1551,7 +1592,8 @@ async function openCropper(file, outW, outH, { round = false, maxLen = 140000 } 
 /* --- eigen profiel bewerken (klik op je profielfoto) --- */
 /* --- badges ---
    Definities staan in Firestore (collectie `badges`). Een badge met auto = 'memberSince' toont de dag waarop het account is gemaakt
-   (users/{uid}.createdAt); alle andere badges tonen we als de uid in het veld `users` (array) van het badge-document staat. */
+   (users/{uid}.createdAt). De badges `plus` en `prime` (id, of veld auto = 'plus' / 'prime') zijn automatisch: ze staan er zolang het tier van
+   die persoon plus / prime is en verdwijnen vanzelf als het tier weggaat. Alle andere badges tonen we als de uid in het veld `users` (array) staat. */
 const BADGES = [];
 const BADGE_ICONS = ['shield', 'calendar', 'star'];
 const dateFmt = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -1560,7 +1602,10 @@ function badgeChips(uid, prof) {
   const list = [...BADGES].sort((a, b) => (Number(a.order) || 99) - (Number(b.order) || 99) || String(a.name).localeCompare(String(b.name)));
   for (const b of list) {
     let extra = '';
-    if (b.auto === 'memberSince') {
+    const tierAuto = ['plus', 'prime'].includes(b.auto) ? b.auto : ['plus', 'prime'].includes(b.id) ? b.id : '';
+    if (tierAuto) {
+      if (tierKey(prof) !== tierAuto) continue;
+    } else if (b.auto === 'memberSince') {
       const t = prof?.createdAt?.toDate?.();
       if (!t) continue;
       extra = dateFmt.format(t);
@@ -1812,10 +1857,14 @@ function stopUnread() {
    - Functies per versie: Firestore -> features -> <id> { name, free, plus, prime, order }  (true = vinkje, false = kruis, tekst = die tekst)
    - Prijzen (optioneel): Firestore -> config -> plans { plusPrice, primePrice }
    - Aanvragen: Firestore -> subscriptions -> <uid> { username, tier, status: pending | approved | rejected, ... }
-   - Moderators = de uid's in het veld `users` van het badge-document met id `moderator`. */
+   - Moderators = de uid's in het veld `users` van het badge-document met id `moderator`.
+   - Admins = dezelfde uid's als de moderators (badge-document `moderator`): beoordelen, abonnees beheren, de tabel aanpassen, eigen aanvraag goedkeuren.
+   - Besluiten (goedkeuren, afwijzen, direct wijzigen) komen in subscriptions/<uid> te staan, met een optioneel bericht in `note`. */
 const TIER_ORDER = ['free', 'plus', 'prime'];
-const isMod = () => !!S.me && BADGES.some(b => b.id === 'moderator' && Array.isArray(b.users) && b.users.includes(S.me.uid));
-const othersPending = () => SUB.pending.filter(r => r.uid !== S.me?.uid);
+const hasBadgeUser = (id) => !!S.me && BADGES.some(b => b.id === id && Array.isArray(b.users) && b.users.includes(S.me.uid));
+const isAdmin = () => hasBadgeUser('moderator') || hasBadgeUser('admin');   // de moderator-badge is de admin-badge
+const isMod = isAdmin;
+const othersPending = () => SUB.pending.filter(r => r.uid !== S.me?.uid || isAdmin());   // alleen een admin mag zijn eigen aanvraag goedkeuren
 
 function renderPremiumBadge() {
   const el = $('#premBadge'); if (!el) return;
@@ -1840,8 +1889,9 @@ function announceDecision() {
   if (last === stamp) return;
   try { localStorage.setItem('infinitum-subseen-' + S.me.uid, stamp); } catch {}
   const name = TIERS[sub.tier]?.name || 'Abonnement';
-  if (sub.status === 'approved') inform(name, 'is geactiveerd! 🎉');
-  else inform(name, 'je aanvraag is helaas afgewezen.');
+  const note = sub.note ? ` Bericht: ${sub.note}` : '';
+  if (sub.status === 'approved') inform(name, (sub.tier === 'free' ? 'je abonnement is stopgezet.' : 'is geactiveerd! 🎉') + note);
+  else inform(name, 'je aanvraag is helaas afgewezen.' + note);
 }
 
 // moderators luisteren naar alle openstaande aanvragen
@@ -1878,15 +1928,45 @@ async function cancelRequest() {
   try { await deleteDoc(doc(db, 'subscriptions', S.me.uid)); toast('Aanvraag geannuleerd.'); }
   catch (e) { toast(fbErr(e)); }
 }
-async function decideRequest(r, ok, btns) {
+async function decideRequest(r, ok, btns, note) {
   btns.forEach(b => { b.disabled = true; });
   try {
     const batch = writeBatch(db);
-    batch.update(doc(db, 'subscriptions', r.uid), { status: ok ? 'approved' : 'rejected', decidedBy: S.me.uid, decidedAt: serverTimestamp() });
+    batch.update(doc(db, 'subscriptions', r.uid), { status: ok ? 'approved' : 'rejected', decidedBy: S.me.uid, decidedAt: serverTimestamp(), note: String(note || '').trim().slice(0, 200) });
     if (ok) batch.update(doc(db, 'users', r.uid), { tier: r.tier });
     await batch.commit();
     toast(ok ? `${r.username || 'Gebruiker'} heeft nu ${TIERS[r.tier]?.name}.` : `Aanvraag van ${r.username || 'gebruiker'} afgewezen.`);
   } catch (e) { toast(fbErr(e)); btns.forEach(b => { b.disabled = false; }); }
+}
+
+// admin: het abonnement van iemand direct wijzigen of stopzetten (tier = 'free'), met een optioneel bericht
+async function adminSetTier(u, tier, note, btns) {
+  btns.forEach(b => { b.disabled = true; });
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'subscriptions', u.uid), {
+      username: String(u.username || 'Onbekend').slice(0, 20), tier, status: 'approved',
+      decidedBy: S.me.uid, decidedAt: serverTimestamp(), note: String(note || '').trim().slice(0, 200)
+    });
+    batch.update(doc(db, 'users', u.uid), { tier });
+    await batch.commit();
+    toast(tier === 'free' ? `Abonnement van ${u.username || 'gebruiker'} is stopgezet.` : `${u.username || 'Gebruiker'} heeft nu ${TIERS[tier].name}.`);
+  } catch (e) { toast(fbErr(e)); btns.forEach(b => { b.disabled = false; }); }
+}
+
+// admin: live lijst van iedereen met Plus of Prime (alleen zolang het Premium-venster openstaat)
+const SUBS = { list: [], ready: false };
+function syncSubsWatch() {
+  const want = !!plansView && !!S.me && isAdmin();
+  if (want && !S.unsub.subs) {
+    S.unsub.subs = onSnapshot(query(collection(db, 'users'), where('tier', 'in', ['plus', 'prime'])), snap => {
+      SUBS.list = snap.docs.map(d => { PROF[d.id] = d.data(); return { uid: d.id, ...d.data() }; });
+      SUBS.ready = true;
+      refreshAvatars(); plansView?.render();
+    }, e => toast(fbErr(e)));
+  } else if (!want && S.unsub.subs) {
+    S.unsub.subs(); S.unsub.subs = null; SUBS.list = []; SUBS.ready = false;
+  }
 }
 
 function featureCell(v, cur) {
@@ -1908,6 +1988,99 @@ function planAction(t, mine, sub) {
   return h('button', { class: 'glow sm', type: 'button', text: label, onclick: () => requestTier(t) });
 }
 
+const featSort = (a, b) => (Number.isFinite(+a.order) ? +a.order : 999) - (Number.isFinite(+b.order) ? +b.order : 999) || String(a.name).localeCompare(String(b.name));
+const featureRows = () => [...(FEATURES.length ? FEATURES : DEFAULT_FEATURES)].filter(f => f && f.name).sort(featSort);
+
+// admin: de tabel "welke functie zit in welk abonnement" aanpassen (Firestore -> features)
+function buildFeatureEditor() {
+  const seeded = !FEATURES.length;   // nog niets in Firestore: dan slaan we alle standaardrijen op
+  const rows = featureRows().map(f => ({ id: f.id, orig: f, name: String(f.name), free: f.free, plus: f.plus, prime: f.prime }));
+  const gone = [];
+  const list = h('div', { class: 'fe-list' });
+  const err = h('p', { class: 'err' });
+  const mode = (v) => v === true ? 'yes' : (typeof v === 'string' && v.trim() ? 'txt' : 'no');
+  const norm = (v) => v === true ? true : (typeof v === 'string' && v.trim() ? v.trim().slice(0, 30) : false);
+
+  const cell = (r, t) => {
+    const sel = h('select', { class: 'inp fe-sel', 'aria-label': TIERS[t].name },
+      h('option', { value: 'yes', text: '✓ Ja' }), h('option', { value: 'no', text: '✗ Nee' }), h('option', { value: 'txt', text: 'Tekst' }));
+    const txt = h('input', { class: 'inp fe-txt', maxlength: 30, placeholder: 'bijv. 10 MB', autocomplete: 'off' });
+    sel.value = mode(r[t]); txt.value = typeof r[t] === 'string' ? r[t] : '';
+    const sync = () => { txt.hidden = sel.value !== 'txt'; r[t] = sel.value === 'yes' ? true : sel.value === 'no' ? false : txt.value; };
+    sel.addEventListener('change', sync); txt.addEventListener('input', sync); sync();
+    return h('div', { class: 'fe-cell' }, h('small', { text: TIERS[t].name }), sel, txt);
+  };
+
+  const paint = () => {
+    list.replaceChildren(...rows.map((r, i) => {
+      const nm = h('input', { class: 'inp fe-name', maxlength: 60, autocomplete: 'off', placeholder: 'Naam van de functie' });
+      nm.value = r.name; nm.addEventListener('input', () => { r.name = nm.value; });
+      const move = (d) => () => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j], rows[i]]; paint(); };
+      return h('div', { class: 'fe-row' },
+        h('div', { class: 'fe-top' }, nm,
+          h('button', { class: 'ghost sm', type: 'button', text: '↑', title: 'Omhoog', 'aria-label': 'Omhoog', disabled: i === 0, onclick: move(-1) }),
+          h('button', { class: 'ghost sm', type: 'button', text: '↓', title: 'Omlaag', 'aria-label': 'Omlaag', disabled: i === rows.length - 1, onclick: move(1) }),
+          h('button', { class: 'btn-no', type: 'button', html: I.trash, title: 'Verwijderen', 'aria-label': 'Functie verwijderen',
+            onclick: () => { const [x] = rows.splice(i, 1); if (x.id) gone.push(x.id); paint(); } })),
+        h('div', { class: 'fe-cells' }, TIER_ORDER.map(t => cell(r, t))));
+    }));
+  };
+
+  const close = () => { plansView.editing = false; plansView.editor = null; plansView.render(); };
+  const add = h('button', { class: 'ghost sm', type: 'button', text: '+ Functie toevoegen', onclick: () => {
+    rows.push({ id: null, orig: null, name: '', free: false, plus: false, prime: false }); paint();
+    list.lastElementChild?.querySelector('.fe-name')?.focus();
+  } });
+  const cancel = h('button', { class: 'ghost', type: 'button', text: 'Annuleren', onclick: close });
+  const save = h('button', { class: 'glow', type: 'button', text: 'Tabel opslaan' });
+  save.onclick = async () => {
+    err.textContent = '';
+    if (rows.some(r => !r.name.trim())) { err.textContent = 'Elke functie heeft een naam nodig.'; return; }
+    save.disabled = true;
+    try {
+      const ops = [];
+      rows.forEach((r, i) => {
+        const data = { name: r.name.trim().slice(0, 60), order: i + 1, free: norm(r.free), plus: norm(r.plus), prime: norm(r.prime) };
+        const o = r.orig;
+        const same = !seeded && o && o.name === data.name && +o.order === data.order && norm(o.free) === data.free && norm(o.plus) === data.plus && norm(o.prime) === data.prime;
+        if (same) return;
+        ops.push(setDoc(doc(db, 'features', r.id || doc(collection(db, 'features')).id), data));
+      });
+      for (const id of gone) ops.push(deleteDoc(doc(db, 'features', id)));
+      await Promise.all(ops);
+      toast('Tabel opgeslagen.');
+      close();
+    } catch (e) { err.textContent = fbErr(e); }
+    finally { save.disabled = false; }
+  };
+
+  paint();
+  return h('div', { class: 'fe' },
+    h('h4', { class: 'plans-sec', text: 'Tabel bewerken' }),
+    h('p', { class: 'hint', text: 'Kies per versie of de functie erbij zit (✓), niet erbij zit (✗) of een eigen tekst heeft. Met de pijltjes verander je de volgorde.' }),
+    list, add, err,
+    h('div', { class: 'dlg-actions' }, cancel, save));
+}
+
+// admin: één abonnee beheren (ander abonnement kiezen of stopzetten, met optioneel bericht)
+function subscriberRow(u) {
+  const cur = tierKey(u);
+  const sel = h('select', { class: 'inp', 'aria-label': 'Abonnement van ' + (u.username || 'gebruiker') },
+    TIER_ORDER.map(t => h('option', { value: t, text: t === 'free' ? 'Gratis (stopzetten)' : TIERS[t].name })));
+  sel.value = cur;
+  const note = h('input', { class: 'inp', maxlength: 200, autocomplete: 'off', placeholder: 'Bericht aan de gebruiker (optioneel) — bijv. waarom je het abonnement wijzigt' });
+  const go = h('button', { class: 'btn-ok', type: 'button', text: 'Toepassen' });
+  go.onclick = () => {
+    if (sel.value === cur) { toast('Kies eerst een ander abonnement.'); return; }
+    adminSetTier(u, sel.value, note.value, [go]);
+  };
+  return h('div', { class: 'row plan-req sub-row' },
+    avatar(u.uid, u.username, 40, true),
+    h('span', { class: 'item-text' }, h('b', { text: u.username || 'Onbekend' }), h('small', { text: TIERS[cur].name })),
+    h('div', { class: 'row-actions' }, sel, go),
+    note);
+}
+
 function buildPlans() {
   const mine = tierKey(S.profile), sub = SUB.mine, out = [];
 
@@ -1916,32 +2089,38 @@ function buildPlans() {
   let st;
   if (sub?.status === 'pending') st = ['pend', `Je aanvraag voor ${subName} is verstuurd. Een moderator moet hem nog goedkeuren. Je krijgt een melding zodra hij is beoordeeld.`];
   else if (sub?.status === 'rejected' && mine !== sub.tier) st = ['bad', `Je aanvraag voor ${subName} is afgewezen. Je kunt hem opnieuw aanvragen.`];
+  else if (sub?.status === 'approved' && sub.tier === 'free' && mine === 'free') st = ['info', 'Je abonnement is stopgezet. Je gebruikt nu het gratis Infinitum.'];
   else if (mine !== 'free') st = ['ok', `Je hebt ${TIERS[mine].name}. Je abonnement is geactiveerd. 🎉`];
   else st = ['info', 'Je gebruikt nu het gratis Infinitum. Je abonnement is nog niet geactiveerd.'];
-  out.push(h('p', { class: 'plan-status ' + st[0], text: st[1] }));
+  const showNote = sub && sub.status !== 'pending' && sub.note && (sub.status === 'approved' ? sub.tier === mine : mine !== sub.tier);
+  out.push(h('p', { class: 'plan-status ' + st[0] }, st[1], showNote ? h('span', { class: 'plan-note', text: 'Bericht van de moderator: ' + sub.note }) : null));
 
-  // vergelijking
-  const rows = [...(FEATURES.length ? FEATURES : DEFAULT_FEATURES)]
-    .filter(f => f && f.name)
-    .sort((a, b) => (Number.isFinite(+a.order) ? +a.order : 999) - (Number.isFinite(+b.order) ? +b.order : 999) || String(a.name).localeCompare(String(b.name)));
-  const grid = h('div', { class: 'plan-grid' }, h('div', { class: 'pg-h pg-corner' }));
-  for (const t of TIER_ORDER) {
-    grid.append(h('div', { class: 'pg-h' + (mine === t ? ' cur' : '') },
-      h('img', { class: 'pg-ic', src: TIERS[t].icon, alt: '' }),
-      h('b', { text: TIERS[t].name }),
-      h('small', { text: t === 'free' ? 'Gratis' : String(PLANCFG[t + 'Price'] || '') })));
+  // vergelijking (of, voor admins in bewerkmodus, de editor)
+  if (plansView?.editing) {
+    plansView.editor ||= buildFeatureEditor();
+    out.push(plansView.editor);
+  } else {
+    const rows = featureRows();
+    const grid = h('div', { class: 'plan-grid' }, h('div', { class: 'pg-h pg-corner' }));
+    for (const t of TIER_ORDER) {
+      grid.append(h('div', { class: 'pg-h' + (mine === t ? ' cur' : '') },
+        h('img', { class: 'pg-ic', src: TIERS[t].icon, alt: '' }),
+        h('b', { text: TIERS[t].name }),
+        h('small', { text: t === 'free' ? 'Gratis' : String(PLANCFG[t + 'Price'] || '') })));
+    }
+    for (const f of rows) {
+      grid.append(h('div', { class: 'pg-f', text: String(f.name) }));
+      for (const t of TIER_ORDER) grid.append(featureCell(f[t], mine === t));
+    }
+    grid.append(h('div', { class: 'pg-a pg-corner' }));
+    for (const t of TIER_ORDER) grid.append(h('div', { class: 'pg-a' + (mine === t ? ' cur' : '') }, planAction(t, mine, sub)));
+    out.push(h('div', { class: 'plan-scroll' }, grid));
+    if (isAdmin()) out.push(h('button', { class: 'ghost sm plan-edit', type: 'button', text: 'Tabel bewerken', onclick: () => { plansView.editing = true; plansView.editor = null; plansView.render(); } }));
   }
-  for (const f of rows) {
-    grid.append(h('div', { class: 'pg-f', text: String(f.name) }));
-    for (const t of TIER_ORDER) grid.append(featureCell(f[t], mine === t));
-  }
-  grid.append(h('div', { class: 'pg-a pg-corner' }));
-  for (const t of TIER_ORDER) grid.append(h('div', { class: 'pg-a' + (mine === t ? ' cur' : '') }, planAction(t, mine, sub)));
-  out.push(h('div', { class: 'plan-scroll' }, grid));
 
   out.push(h('p', { class: 'plan-how', text: 'Zo werkt het: klik bij een versie op Abonneer. Een moderator keurt je aanvraag goed, daarna wordt je abonnement geactiveerd en zie je dat hier.' }));
 
-  // moderators: aanvragen beoordelen
+  // moderators + admins: aanvragen beoordelen (met optioneel bericht)
   if (isMod()) {
     const list = othersPending().sort((a, b) => (a.requestedAt?.toMillis?.() || 0) - (b.requestedAt?.toMillis?.() || 0));
     loadProfiles(list.map(r => r.uid));
@@ -1951,14 +2130,25 @@ function buildPlans() {
       const d = r.requestedAt?.toDate?.();
       const ok = h('button', { class: 'btn-ok', type: 'button', text: 'Goedkeuren' });
       const no = h('button', { class: 'btn-no', type: 'button', text: 'Afwijzen' });
-      ok.onclick = () => decideRequest(r, true, [ok, no]);
-      no.onclick = () => decideRequest(r, false, [ok, no]);
+      const note = h('input', { class: 'inp', maxlength: 200, autocomplete: 'off', placeholder: 'Bericht aan de gebruiker (optioneel) — bijv. waarom je goedkeurt of afwijst' });
+      ok.onclick = () => decideRequest(r, true, [ok, no], note.value);
+      no.onclick = () => decideRequest(r, false, [ok, no], note.value);
       out.push(h('div', { class: 'row plan-req' },
         avatar(r.uid, r.username, 40, true),
         h('span', { class: 'item-text' }, h('b', { text: r.username || 'Onbekend' }),
-          h('small', { text: `vraagt ${TIERS[r.tier]?.name || 'een abonnement'} aan` + (d ? ` · ${dayLabel(d)} ${tf.format(d)}` : '') })),
-        h('div', { class: 'row-actions' }, ok, no)));
+          h('small', { text: `vraagt ${TIERS[r.tier]?.name || 'een abonnement'} aan` + (d ? ` · ${dayLabel(d)} ${tf.format(d)}` : '') + (r.uid === S.me.uid ? ' · jouw aanvraag' : '') })),
+        h('div', { class: 'row-actions' }, ok, no),
+        note));
     }
+  }
+
+  // admins: iedereen met Plus of Prime beheren
+  if (isAdmin()) {
+    const subs = [...SUBS.list].sort((a, b) => TIER_ORDER.indexOf(tierKey(b)) - TIER_ORDER.indexOf(tierKey(a)) || String(a.username).localeCompare(String(b.username)));
+    out.push(h('h4', { class: 'plans-sec', text: `Abonnees beheren — ${subs.length}` }));
+    if (!SUBS.ready) out.push(h('p', { class: 'hint', text: 'Laden…' }));
+    else if (!subs.length) out.push(h('p', { class: 'hint', text: 'Niemand heeft op dit moment Infinitum+ of Infinitum Prime.' }));
+    for (const u of subs) out.push(subscriberRow(u));
   }
   return out;
 }
@@ -1966,7 +2156,13 @@ function buildPlans() {
 function openPlans() {
   if (!S.me) return;
   const body = h('div');
-  plansView = { render: () => body.replaceChildren(...buildPlans()) };
+  // niet opnieuw tekenen terwijl iemand in een invoerveld typt (anders raakt de tekst kwijt als er live data binnenkomt)
+  const inField = () => body.contains(document.activeElement) && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+  plansView = {
+    editing: false, editor: null, dirty: false,
+    render() { if (inField()) { this.dirty = true; return; } this.dirty = false; body.replaceChildren(...buildPlans()); }
+  };
+  body.addEventListener('focusout', () => setTimeout(() => { if (plansView?.dirty && !inField()) plansView.render(); }, 0));
   openDialog(
     h('h3', { text: 'Infinitum Premium' }),
     h('p', { class: 'sub', text: 'Vergelijk de versies en vraag een abonnement aan.' }),
@@ -1974,6 +2170,7 @@ function openPlans() {
     h('div', { class: 'dlg-actions' }, h('button', { class: 'ghost', type: 'button', onclick: closeDialog, text: 'Sluiten' })));
   dlg.classList.add('plans');
   plansView.render();
+  syncSubsWatch();
 }
 $('#premiumBtn').addEventListener('click', openPlans);
 

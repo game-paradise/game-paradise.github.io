@@ -269,6 +269,25 @@ service cloud.firestore {
         && request.resource.data.at == request.time;
     }
 
+    // reageren op een bericht = een klein citaat (`replyTo`) in het nieuwe bericht
+    function validReply(d) {
+      return !('replyTo' in d) || (d.replyTo is map
+        && d.replyTo.keys().hasOnly(['id', 'uid', 'name', 'text'])
+        && d.replyTo.id is string && d.replyTo.id.size() <= 40
+        && d.replyTo.uid is string && d.replyTo.uid.size() <= 40
+        && d.replyTo.name is string && d.replyTo.name.size() <= 20
+        && d.replyTo.text is string && d.replyTo.text.size() <= 100);
+    }
+
+    // bewerken: alleen je eigen bericht, alleen `text` (1-2000 tekens) + `editedAt`
+    function validEdit() {
+      return resource.data.uid == request.auth.uid
+        && changed(['text', 'editedAt'])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 2000
+        && request.resource.data.editedAt == request.time;
+    }
+
     // ---------- DM's ----------
     match /chats/{chatId} {
       allow read: if isFriendChat(chatId);
@@ -300,16 +319,17 @@ service cloud.firestore {
       match /messages/{mid} {
         allow read: if isFriendChat(chatId);
         allow create: if isFriendChat(chatId)
-          && request.resource.data.keys().hasOnly(['uid', 'name', 'text', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'text', 'createdAt', 'replyTo'])
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.name is string
           && request.resource.data.name.size() <= 20
           && request.resource.data.text is string
           && request.resource.data.text.size() >= 1
           && request.resource.data.text.size() <= 2000
-          && request.resource.data.createdAt == request.time;
+          && request.resource.data.createdAt == request.time
+          && validReply(request.resource.data);
         allow delete: if isFriendChat(chatId) && resource.data.uid == request.auth.uid;
-        allow update: if false;
+        allow update: if isFriendChat(chatId) && validEdit();
       }
     }
 
@@ -370,17 +390,18 @@ service cloud.firestore {
         allow read: if signedIn() && request.auth.uid in serverDoc().members;
         allow create: if signedIn()
           && request.auth.uid in serverDoc().members
-          && request.resource.data.keys().hasOnly(['uid', 'name', 'text', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'text', 'createdAt', 'replyTo'])
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.name is string
           && request.resource.data.name.size() <= 20
           && request.resource.data.text is string
           && request.resource.data.text.size() >= 1
           && request.resource.data.text.size() <= 2000
-          && request.resource.data.createdAt == request.time;
+          && request.resource.data.createdAt == request.time
+          && validReply(request.resource.data);
         allow delete: if signedIn()
           && (resource.data.uid == request.auth.uid || serverDoc().ownerId == request.auth.uid);
-        allow update: if false;
+        allow update: if signedIn() && request.auth.uid in serverDoc().members && validEdit();
       }
     }
   }

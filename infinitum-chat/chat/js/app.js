@@ -37,6 +37,8 @@ const I = {
   shield: svg('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>'),
   calendar: svg('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
   star: svg('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>'),
+  reply: svg('<polyline points=\"9 17 4 12 9 7\"/><path d=\"M20 18v-2a4 4 0 0 0-4-4H4\"/>'),
+  pencil: svg('<path d=\"M12 20h9\"/><path d=\"M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z\"/>'),
   eye: svg('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
   send: '<svg viewBox="0 0 24 24"><path d="M3.2 11.4 20.4 3.3c.9-.4 1.7.5 1.3 1.3L13.6 21.8c-.4.9-1.7.8-1.9-.2l-1.6-6.5L3.5 13.3c-1-.2-1.2-1.5-.3-1.9z" fill="url(#gradSend)"/></svg>',
   logout: svg('<path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3M16 8l4 4-4 4M20 12H9"/>'),
@@ -418,7 +420,7 @@ function teardown() {
 /* =====================  tabs + zijbalk  ===================== */
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('.tab'); if (b) setTab(b.dataset.tab); });
 
-function setTab(t) { S.tab = t; renderTabs(); renderSidebar(); showMain(); }
+function setTab(t) { S.tab = t; renderTabs(); renderSidebar(true); showMain(); }
 
 function renderTabs() {
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === S.tab));
@@ -436,19 +438,39 @@ function renderUserCard() {
 let sideRaf = 0;
 function scheduleSidebar() { cancelAnimationFrame(sideRaf); sideRaf = requestAnimationFrame(renderSidebar); }
 
-function renderSidebar() {
+// zachte inschuif-animatie voor de zijbalk bij het wisselen van tabblad (de .swap-klasse gaat daarna weer weg)
+function swapAnim(...els) {
+  els.forEach(el => {
+    [...el.children].slice(0, 16).forEach((c, i) => c.style.setProperty('--i', i));
+    el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap');
+    clearTimeout(el._swapT); el._swapT = setTimeout(() => el.classList.remove('swap'), 800);
+  });
+}
+
+let sideSig = '';
+function renderSidebar(animate = false) {
   if (!S.me) return;
   const list = $('#sideList'), foot = $('#sideFoot');
   if (S.tab === 'settings') {
     $('#sideTitle').textContent = 'Instellingen';
     if (list.dataset.mode === 'settings') return;   // niet opnieuw opbouwen: anders raak je de zoekbalk kwijt tijdens het typen
-    list.dataset.mode = 'settings';
+    list.dataset.mode = 'settings'; sideSig = '';
     buildSettingsNav(list, foot);
+    swapAnim(list, foot);
     return;
   }
-  delete list.dataset.mode;
-  list.replaceChildren(); foot.replaceChildren();
+  const had = list.dataset.mode; delete list.dataset.mode;
+  // eerst "ernaast" opbouwen: is het resultaat identiek aan wat er al staat, dan laten we de zijbalk met rust (geen geflikker)
+  const nl = document.createElement('div'), nf = document.createElement('div');
+  fillSidebar(nl, nf);
+  const sig = S.tab + '\n' + nl.innerHTML + '\n' + nf.innerHTML;
+  if (sig === sideSig && !animate && !had) return;
+  sideSig = sig;
+  list.replaceChildren(...nl.childNodes); foot.replaceChildren(...nf.childNodes);
+  if (animate || had) swapAnim(list, foot);
+}
 
+function fillSidebar(list, foot) {
   if (S.tab === 'servers') {
     $('#sideTitle').textContent = 'Servers';
     if (!S.servers.length) list.append(h('p', { class: 'hint', text: 'Je zit nog in geen enkele server. Maak er een of join met een code.' }));
@@ -544,21 +566,33 @@ function openChat(type, id) {
   const ta = h('textarea', { id: 'msgInput', rows: 1, maxlength: 2000, placeholder: type === 'dm' ? `Bericht aan ${name}` : `Bericht in ${name}` });
   const doSend = async () => {
     const text = ta.value.trim();
-    if (!text) return;
-    ta.value = ''; ta.style.height = 'auto';
-    try { await sendMessage(text); }
-    catch (e) { ta.value = text; toast(fbErr(e)); }
+    const c = S.chat;
+    if (!text || !c) return;
+    if (c.editing) {   // bericht bewerken: opslaan
+      const id = c.editing, old = c.byId?.[id];
+      cancelCompose();
+      if (old && old.text !== text) await editMessage(id, text);
+      return;
+    }
+    const reply = c.replyTo;
+    ta.value = ''; ta.style.height = 'auto'; c.replyTo = null; paintCompose();
+    try { await sendMessage(text, reply); }
+    catch (e) { ta.value = text; if (S.chat === c) { c.replyTo = reply; paintCompose(); } toast(fbErr(e)); }
   };
   ta.addEventListener('input', () => {
     ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
     if (ta.value.trim()) pingTyping();
   });
-  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); doSend(); } });
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); doSend(); }
+    else if (e.key === 'Escape' && (S.chat?.editing || S.chat?.replyTo)) { e.preventDefault(); cancelCompose(); }
+  });
 
   $('#main').replaceChildren(
     buildHead(type, id),
     h('div', { class: 'msgs', id: 'msgList' }),
     h('div', { class: 'typing', id: 'typingBar', 'aria-live': 'polite' }),
+    h('div', { class: 'cbar', id: 'cbar', hidden: true }),
     h('div', { class: 'composer' },
       h('div', { class: 'box' }, ta),
       h('button', { class: 'glow send', type: 'button', title: 'Versturen', 'aria-label': 'Versturen', html: I.send, onclick: doSend })));
@@ -754,12 +788,15 @@ function renderMessages(msgs) {
     if (newDay) list.append(h('div', { class: 'day', text: dayLabel(d) }));
     const grouped = !newDay && prev.uid === m.uid && d - prev.d < 5 * 60000;
     const mine = m.uid === S.me.uid;
-    list.append(h('div', { class: `msg ${mine ? 'mine' : 'theirs'}${grouped ? ' grouped' : ''}` },
+    list.append(h('div', { class: `msg ${mine ? 'mine' : 'theirs'}${grouped ? ' grouped' : ''}`, 'data-mid': m.id },
       mine && h('button', { class: 'icon-btn del', type: 'button', title: 'Verwijderen', 'aria-label': 'Bericht verwijderen', html: I.trash, onclick: () => deleteMessage(m.id) }),
       !mine && h('div', { class: 'msg-av' }, grouped ? null : avatar(m.uid, PROF[m.uid]?.username || m.name, 34, true)),
       h('div', { class: 'msg-body' },
         !grouped && h('div', { class: 'meta' }, !mine && h('b', { text: PROF[m.uid]?.username || m.name || 'Onbekend' }), h('time', { text: tf.format(d) })),
-        h('div', { class: 'bubble', text: m.text }),
+        h('div', { class: 'bwrap' },
+          m.replyTo ? quoteEl(m.replyTo) : null,
+          h('div', { class: 'bubble' }, m.text, m.editedAt ? h('small', { class: 'edited', text: ' (bewerkt)' }) : null),
+          !mine && h('button', { class: 'icon-btn react-btn', type: 'button', title: 'Reageren', 'aria-label': 'Reageren op dit bericht', html: I.reply, onclick: () => startReply(m) })),
         mine ? h('div', { class: 'receipt', 'data-mid': m.id }) : null)));
     prev = { uid: m.uid, d };
   }
@@ -770,6 +807,7 @@ function renderMessages(msgs) {
   S.chat.newest = last ? { id: last.id, uid: last.uid } : null;
   S.chat.lastMillis = last?.createdAt?.toMillis?.() || 0;
   S.chat.lastMineAt = lastMine?.createdAt?.toMillis?.() || 0;
+  S.chat.byId = Object.fromEntries(msgs.map(x => [x.id, x]));
   S.chat.mine = msgs.filter(x => x.uid === S.me.uid).map(x => ({ id: x.id, ms: x.createdAt?.toMillis?.() || Date.now() }));   // oplopend
   markRead(); updateReceipt(); seenOpenDm();
   if (last && last.id !== S.chat.lastId) {
@@ -779,10 +817,12 @@ function renderMessages(msgs) {
   }
 }
 
-async function sendMessage(text) {
+async function sendMessage(text, reply) {
   const c = S.chat; if (!c) return;
   const batch = writeBatch(db);
-  batch.set(doc(c.col), { uid: S.me.uid, name: S.profile?.username || 'Onbekend', text, createdAt: serverTimestamp() });
+  const data = { uid: S.me.uid, name: S.profile?.username || 'Onbekend', text, createdAt: serverTimestamp() };
+  if (reply) data.replyTo = { id: String(reply.id), uid: String(reply.uid), name: String(reply.name).slice(0, 20), text: String(reply.text).slice(0, 100) };
+  batch.set(doc(c.col), data);
   if (c.type === 'dm') {
     batch.set(doc(db, 'chats', c.id), { lastText: text.slice(0, 80), lastUid: S.me.uid, lastAt: serverTimestamp() }, { merge: true });
   }
@@ -792,6 +832,93 @@ async function sendMessage(text) {
 async function deleteMessage(id) {
   try { await deleteDoc(doc(S.chat.col, id)); } catch (e) { toast(fbErr(e)); }
 }
+
+/* =====================  reageren, bewerken en het rechtermuisknop-menu  ===================== */
+// Reageren = een bericht citeren (opgeslagen als `replyTo` in het nieuwe bericht). Bewerken kan alleen bij je eigen berichten
+// (`text` + `editedAt`). Rechtermuisknop op een bericht: Reageren (alle berichten), Bewerken + Verwijderen (alleen van jou).
+const snippet = (t, n = 100) => { const x = String(t || '').replace(/\s+/g, ' ').trim(); return x.length > n ? x.slice(0, n - 1) + '…' : x; };
+
+function paintCompose() {
+  const bar = $('#cbar'), c = S.chat;
+  if (!bar || !c) return;
+  const x = h('button', { class: 'icon-btn', type: 'button', html: I.x, 'aria-label': 'Annuleren', onclick: cancelCompose });
+  if (c.editing) {
+    bar.replaceChildren(h('span', { class: 'cbar-ic', html: I.pencil }),
+      h('span', { class: 'cbar-t' }, h('b', { text: 'Bericht bewerken' }), h('small', { text: 'Enter = opslaan · Esc = annuleren' })), x);
+  } else if (c.replyTo) {
+    bar.replaceChildren(h('span', { class: 'cbar-ic', html: I.reply }),
+      h('span', { class: 'cbar-t' }, h('b', { text: 'Reageren op ' + c.replyTo.name }), h('small', { text: c.replyTo.text })), x);
+  } else bar.replaceChildren();
+  bar.hidden = !(c.editing || c.replyTo);
+}
+function cancelCompose() {
+  const c = S.chat, ta = $('#msgInput');
+  if (!c) return;
+  if (c.editing && ta) { ta.value = ''; ta.style.height = 'auto'; }
+  c.editing = null; c.replyTo = null; paintCompose();
+}
+function startReply(m) {
+  const c = S.chat, ta = $('#msgInput');
+  if (!c || !m) return;
+  if (c.editing && ta) { ta.value = ''; ta.style.height = 'auto'; }
+  c.editing = null;
+  const name = m.uid === S.me.uid ? (S.profile?.username || m.name) : (PROF[m.uid]?.username || m.name);
+  c.replyTo = { id: m.id, uid: m.uid, name: String(name || 'Onbekend').slice(0, 20), text: snippet(m.text) };
+  paintCompose(); ta?.focus();
+}
+function startEdit(m) {
+  const c = S.chat, ta = $('#msgInput');
+  if (!c || !ta || !m || m.uid !== S.me.uid) return;
+  c.replyTo = null; c.editing = m.id;
+  ta.value = m.text; ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+  paintCompose(); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+async function editMessage(id, text) {
+  try { await updateDoc(doc(S.chat.col, id), { text, editedAt: serverTimestamp() }); }
+  catch (e) { toast(fbErr(e)); }
+}
+function quoteEl(r) {
+  return h('button', { class: 'quote', type: 'button', title: 'Naar het originele bericht', onclick: () => jumpTo(r.id) },
+    h('span', { class: 'quote-ic', html: I.reply }), h('b', { text: String(r.name || 'Onbekend') }), h('span', { class: 'quote-t', text: String(r.text || '') }));
+}
+function jumpTo(id) {
+  const el = document.querySelector(`#msgList .msg[data-mid="${CSS.escape(String(id))}"]`);
+  if (!el) { toast('Dat bericht staat te ver terug om te tonen.'); return; }
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+}
+
+let ctxEl = null;
+function closeCtx() { ctxEl?.remove(); ctxEl = null; }
+function openCtx(x, y, items) {
+  closeCtx();
+  ctxEl = h('div', { class: 'ctx', role: 'menu' }, items.map(it => h('button', {
+    class: 'ctx-i' + (it.danger ? ' danger' : ''), type: 'button', role: 'menuitem',
+    onclick: () => { closeCtx(); it.run(); }
+  }, h('span', { class: 'ctx-ic', html: it.icon }), it.label)));
+  document.body.append(ctxEl);
+  const r = ctxEl.getBoundingClientRect();
+  ctxEl.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + 'px';
+  ctxEl.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + 'px';
+  ctxEl.querySelector('button')?.focus();
+}
+document.addEventListener('click', closeCtx);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCtx(); });
+window.addEventListener('resize', closeCtx);
+document.addEventListener('scroll', closeCtx, true);
+document.addEventListener('contextmenu', e => {
+  const el = e.target.closest?.('#msgList .msg');
+  if (!el || !S.chat) { closeCtx(); return; }
+  const m = S.chat.byId?.[el.dataset.mid];
+  if (!m) return;
+  e.preventDefault();
+  const items = [{ icon: I.reply, label: 'Reageren', run: () => startReply(m) }];
+  if (m.uid === S.me.uid) {
+    items.push({ icon: I.pencil, label: 'Bewerken', run: () => startEdit(m) });
+    items.push({ icon: I.trash, label: 'Verwijderen', danger: true, run: () => deleteMessage(m.id) });
+  }
+  openCtx(e.clientX, e.clientY, items);
+});
 
 /* =====================  vrienden  ===================== */
 async function addFriend(raw) {
@@ -1310,7 +1437,11 @@ function applyAppearance() {
 lightMq.addEventListener?.('change', () => { if (CFG.theme === 'system') applyAppearance(); });
 
 $('#settingsBtn').innerHTML = I.gear;
-$('#settingsBtn').addEventListener('click', () => setTab('settings'));
+$('#settingsBtn').addEventListener('click', () => {
+  // in de instellingen? Dan terug naar waar je was (tabblad + open gesprek blijven bewaard)
+  if (S.tab === 'settings') setTab(S.prevTab && S.prevTab !== 'settings' ? S.prevTab : 'dms');
+  else { S.prevTab = S.tab; setTab('settings'); }
+});
 
 /* --- meldingen --- */
 let audioCtx;

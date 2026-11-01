@@ -8,12 +8,15 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
 
-    // Moderators = de uid's in het veld `users` (array) van het badge-document met id `moderator`.
-    function isMod() {
+    // Admin = de uid's in het veld `users` (array) van het badge-document met id `moderator` (de moderator-badge IS de admin-badge).
+    // Een document met id `admin` werkt ook, maar is niet nodig.
+    function hasBadge(id) {
       return signedIn()
-        && exists(/databases/$(database)/documents/badges/moderator)
-        && request.auth.uid in get(/databases/$(database)/documents/badges/moderator).data.get('users', []);
+        && exists(/databases/$(database)/documents/badges/$(id))
+        && request.auth.uid in get(/databases/$(database)/documents/badges/$(id)).data.get('users', []);
     }
+    function isAdmin() { return hasBadge('moderator') || hasBadge('admin'); }
+    function isMod() { return isAdmin(); }
 
     // Een DM-chat mag alleen als jullie bevestigde vrienden zijn.
     function friendship(id) {
@@ -60,7 +63,7 @@ service cloud.firestore {
       // het veld `tier` (type: string) staat op users/{uid} en is "free", "plus" of "prime".
       // Nieuwe gebruikers krijgen automatisch tier = "free". Jij verandert het in de Firebase Console
       // (Firestore Database → users → document van de persoon → veld tier → waarde aanpassen).
-      // Gebruikers kunnen het niet zelf verhogen of wijzigen.
+      // Gebruikers kunnen het niet zelf verhogen of wijzigen; moderators/admins alleen via een besluit (zie hieronder).
       allow read: if signedIn();
       allow create: if isSelf(uid)
         && request.resource.data.keys().hasOnly(['username', 'usernameLower', 'status', 'tier', 'createdAt'])
@@ -94,12 +97,22 @@ service cloud.firestore {
         && uid != request.auth.uid
         && changed(['tier'])
         && request.resource.data.tier in ['plus', 'prime']
+        && get(/databases/$(database)/documents/subscriptions/$(uid)).data.status == 'pending'
         && getAfter(/databases/$(database)/documents/subscriptions/$(uid)).data.status == 'approved'
-        && getAfter(/databases/$(database)/documents/subscriptions/$(uid)).data.tier == request.resource.data.tier;
+        && getAfter(/databases/$(database)/documents/subscriptions/$(uid)).data.tier == request.resource.data.tier
+        && getAfter(/databases/$(database)/documents/subscriptions/$(uid)).data.decidedBy == request.auth.uid;
+      // Een admin mag elk tier zetten (ook 'free' = abonnement stopzetten, en bij zichzelf), altijd samen met een vastgelegd
+      // besluit in subscriptions/{uid} (zo kan de gebruiker zien wat er is veranderd en waarom).
+      allow update: if isAdmin()
+        && changed(['tier'])
+        && request.resource.data.tier in ['free', 'plus', 'prime']
+        && getAfter(/databases/$(database)/documents/subscriptions/$(uid)).data.status == 'approved'
+        && getAfter(/databases/$(database)/documents/subscriptions/$(uid)).data.tier == request.resource.data.tier
+        && getAfter(/databases/$(database)/documents/subscriptions/$(uid)).data.decidedBy == request.auth.uid;
       allow delete: if false;
     }
 
-    // ---------- abonnementsaanvragen (id = uid van de aanvrager) ----------
+    // ---------- abonnementsaanvragen + besluiten (id = uid van de gebruiker) ----------
     match /subscriptions/{uid} {
       function validSubRequest() {
         let d = request.resource.data;
@@ -110,26 +123,74 @@ service cloud.firestore {
           && d.requestedAt == request.time
           && get(/databases/$(database)/documents/users/$(uid)).data.get('tier', 'free') != d.tier;
       }
+      function validNote(d) {
+        return d.get('note', '') is string && d.get('note', '').size() <= 200;
+      }
+      // een admin zet het abonnement van iemand direct op free / plus / prime, met een optioneel bericht
+      function adminChange() {
+        let d = request.resource.data;
+        return isAdmin()
+          && d.keys().hasOnly(['username', 'tier', 'status', 'decidedBy', 'decidedAt', 'note'])
+          && d.username is string && d.username.size() <= 20
+          && d.tier in ['free', 'plus', 'prime']
+          && d.status == 'approved'
+          && d.decidedBy == request.auth.uid
+          && d.decidedAt == request.time
+          && validNote(d);
+      }
 
-      // je ziet alleen je eigen aanvraag; moderators zien alle aanvragen
+      // je ziet alleen je eigen aanvraag; moderators en admins zien alle aanvragen
       allow read: if isSelf(uid) || isMod();
-      allow create: if isSelf(uid) && validSubRequest();
+      allow create: if (isSelf(uid) && validSubRequest()) || adminChange();
       allow update: if (isSelf(uid) && validSubRequest())
         || (isMod()
-            && uid != request.auth.uid
+            && (uid != request.auth.uid || isAdmin())      // alleen een admin mag zijn eigen aanvraag goedkeuren
             && resource.data.status == 'pending'
-            && changed(['status', 'decidedBy', 'decidedAt'])
+            && changed(['status', 'decidedBy', 'decidedAt', 'note'])
             && request.resource.data.status in ['approved', 'rejected']
             && request.resource.data.decidedBy == request.auth.uid
-            && request.resource.data.decidedAt == request.time);
+            && request.resource.data.decidedAt == request.time
+            && validNote(request.resource.data))
+        || adminChange();
       // aanvraag annuleren of opruimen
       allow delete: if isSelf(uid);
     }
 
-    // ---------- functies per abonnement (alleen te wijzigen via de Firebase Console) ----------
+    // ---------- functies per abonnement (de tabel; alleen admins mogen hem aanpassen) ----------
     match /features/{featureId} {
+      function okCell(v) { return v is bool || (v is string && v.size() <= 30); }
       allow read: if signedIn();
-      allow write: if false;
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['name', 'free', 'plus', 'prime', 'order'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 60
+        && okCell(request.resource.data.free)
+        && okCell(request.resource.data.plus)
+        && okCell(request.resource.data.prime)
+        && request.resource.data.order is number;
+      allow delete: if isAdmin();
+    }
+
+    // ---------- jouw instellingen (thema, meldingen, privacy...) — alleen jijzelf ----------
+    match /settings/{uid} {
+      allow read: if isSelf(uid);
+      allow create, update: if isSelf(uid)
+        && request.resource.data.keys().hasOnly(['theme', 'bg', 'profileClick', 'privacy', 'notif'])
+        && request.resource.data.theme in ['dark', 'light', 'system']
+        && request.resource.data.bg is string && request.resource.data.bg.size() <= 20
+        && request.resource.data.profileClick is bool
+        && request.resource.data.privacy is map
+        && request.resource.data.privacy.keys().hasOnly(['readReceipts'])
+        && request.resource.data.privacy.readReceipts is bool
+        && request.resource.data.notif is map
+        && request.resource.data.notif.keys().hasOnly(['desktop', 'sound', 'dm', 'server', 'requests', 'preview'])
+        && request.resource.data.notif.desktop is bool
+        && request.resource.data.notif.sound is bool
+        && request.resource.data.notif.dm is bool
+        && request.resource.data.notif.server is bool
+        && request.resource.data.notif.requests is bool
+        && request.resource.data.notif.preview is bool;
+      allow delete: if false;
     }
 
     // ---------- online / inactief / offline ----------

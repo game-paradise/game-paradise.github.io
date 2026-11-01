@@ -107,9 +107,25 @@ function toast(text) {
   setTimeout(() => t.remove(), 3800);
 }
 
+// onSnapshot met automatisch opnieuw proberen. Een tijdelijke fout (vlak na inloggen, even geen verbinding, regels die net
+// bijwerken) beëindigt een gewone luisteraar voorgoed; deze probeert het tot 3x opnieuw en meldt pas daarna iets.
+function watch(name, q, next) {
+  let stop = () => {}, dead = false;
+  const start = (n) => {
+    stop = onSnapshot(q, snap => { n = 0; next(snap); }, e => {
+      console.error(name, e);
+      if (dead) return;
+      if (n < 3) setTimeout(() => { if (!dead) start(n + 1); }, 1000 * (n + 1));
+      else toast(`${fbErr(e)} (${name})`);
+    });
+  };
+  start(0);
+  return () => { dead = true; stop(); };
+}
+
 function fbErr(e) {
   const c = e?.code || '';
-  if (c.includes('permission-denied')) return 'Firestore weigert toegang (permission-denied). Plak de inhoud van firestore.rules bij Firestore → Regels en klik op Publiceren.';
+  if (c.includes('permission-denied')) return 'Firestore weigerde dit verzoek (permission-denied). Probeer het zo nog eens. Blijft dit gebeuren, controleer dan of de nieuwste firestore.rules zijn gepubliceerd.';
   if (c.includes('not-found')) return 'Je Firestore-database bestaat nog niet (not-found). Maak hem aan in de Firebase Console: Build → Firestore Database → Database maken.';
   if (c.includes('unavailable')) return 'Geen verbinding met Firebase.';
   return (e?.message || 'Er ging iets mis.') + (c ? ` (${c})` : '');
@@ -315,7 +331,7 @@ function startListeners() {
     if (S.tab === 'settings') renderSettings();
   }, e => console.error(e));
 
-  S.unsub.friends = onSnapshot(query(collection(db, 'friendships'), where('users', 'array-contains', uid)), snap => {
+  S.unsub.friends = watch('vrienden', query(collection(db, 'friendships'), where('users', 'array-contains', uid)), snap => {
     S.friendships = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     syncChatMeta(); syncUnread(); scheduleWatch(); checkNewRequests();
     renderTabs(); scheduleSidebar();
@@ -324,9 +340,9 @@ function startListeners() {
     if (S.tab === 'dms') {
       if (S.activeDm && !dmInfo(S.activeDm)) { S.activeDm = null; showMain(); }
     }
-  }, e => { console.error(e); toast(fbErr(e)); });
+  });
 
-  S.unsub.servers = onSnapshot(query(collection(db, 'servers'), where('members', 'array-contains', uid)), snap => {
+  S.unsub.servers = watch('servers', query(collection(db, 'servers'), where('members', 'array-contains', uid)), snap => {
     S.servers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     scheduleSidebar(); scheduleWatch();
     if (S.activeServer && !serverInfo(S.activeServer)) {
@@ -336,7 +352,7 @@ function startListeners() {
       const old = $('#chatHead');
       if (old && serverInfo(S.chat.id)) old.replaceWith(buildHead('server', S.chat.id));
     }
-  }, e => { console.error(e); toast(fbErr(e)); });
+  });
 
   // noodschakelaar: Firestore -> config -> features -> typingIndicators (true/false)
   S.unsub.config = onSnapshot(doc(db, 'config', 'features'), s => {
@@ -598,7 +614,7 @@ function openChat(type, id) {
       h('button', { class: 'glow send', type: 'button', title: 'Versturen', 'aria-label': 'Versturen', html: I.send, onclick: doSend })));
 
   let primed = false;
-  S.unsub.chat = onSnapshot(query(col, orderBy('createdAt', 'desc'), limit(100)), snap => {
+  S.unsub.chat = watch('berichten', query(col, orderBy('createdAt', 'desc'), limit(100)), snap => {
     // servermeldingen: alleen voor de server die open staat terwijl je tabblad op de achtergrond is
     if (primed && type === 'server' && !snap.metadata.hasPendingWrites && !(isVisible() && document.hasFocus())) {
       for (const ch of snap.docChanges()) {
@@ -609,7 +625,7 @@ function openChat(type, id) {
     primed = true;
     const msgs = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) })).reverse();
     renderMessages(msgs);
-  }, e => { console.error(e); toast(fbErr(e)); });
+  });
 
   if (matchMedia('(min-width: 801px)').matches) ta.focus();
   scheduleWatch(); renderPresence();
@@ -651,12 +667,12 @@ function syncReadWatch() {
 
 function markRead() {
   const c = S.chat;
-  if (!rrOn() || !c?.readsCol || !c.newest || c.newest.uid === S.me.uid || c.markedId === c.newest.id) return;
+  if (!rrOn() || !c?.readsCol || !c.newest || c.newest.uid === S.me.uid || c.markedId === c.newest.id + ':' + c.newest.ver) return;
   if (!isVisible() || !document.hasFocus() || activeManual() === 'invisible') return;
   clearTimeout(c.readT);
   const wait = c.lastRead + RR.every - Date.now();
   if (wait > 0) { c.readT = setTimeout(markRead, wait); return; }
-  c.markedId = c.newest.id; c.lastRead = Date.now();
+  c.markedId = c.newest.id + ':' + c.newest.ver; c.lastRead = Date.now();
   setDoc(doc(c.readsCol, S.me.uid), { at: serverTimestamp() }).catch(() => { if (S.chat === c) c.markedId = null; });
 }
 window.addEventListener('focus', () => markRead());
@@ -789,13 +805,11 @@ function renderMessages(msgs) {
     const grouped = !newDay && prev.uid === m.uid && d - prev.d < 5 * 60000;
     const mine = m.uid === S.me.uid;
     list.append(h('div', { class: `msg ${mine ? 'mine' : 'theirs'}${grouped ? ' grouped' : ''}`, 'data-mid': m.id },
-      mine && h('button', { class: 'icon-btn del', type: 'button', title: 'Verwijderen', 'aria-label': 'Bericht verwijderen', html: I.trash, onclick: () => deleteMessage(m.id) }),
       !mine && h('div', { class: 'msg-av' }, grouped ? null : avatar(m.uid, PROF[m.uid]?.username || m.name, 34, true)),
       h('div', { class: 'msg-body' },
         !grouped && h('div', { class: 'meta' }, !mine && h('b', { text: PROF[m.uid]?.username || m.name || 'Onbekend' }), h('time', { text: tf.format(d) })),
         h('div', { class: 'bwrap' },
-          m.replyTo ? quoteEl(m.replyTo) : null,
-          h('div', { class: 'bubble' }, m.text, m.editedAt ? h('small', { class: 'edited', text: ' (bewerkt)' }) : null),
+          h('div', { class: 'bubble' }, m.replyTo ? quoteEl(m.replyTo) : null, m.text, m.editedAt ? h('small', { class: 'edited', text: ' (bewerkt)' }) : null),
           !mine && h('button', { class: 'icon-btn react-btn', type: 'button', title: 'Reageren', 'aria-label': 'Reageren op dit bericht', html: I.reply, onclick: () => startReply(m) })),
         mine ? h('div', { class: 'receipt', 'data-mid': m.id }) : null)));
     prev = { uid: m.uid, d };
@@ -804,11 +818,13 @@ function renderMessages(msgs) {
   S.chat.first = false;
 
   const last = msgs[msgs.length - 1];
-  S.chat.newest = last ? { id: last.id, uid: last.uid } : null;
+  S.chat.newest = last ? { id: last.id, uid: last.uid, ver: last.editedAt?.toMillis?.() || 0 } : null;
   S.chat.lastMillis = last?.createdAt?.toMillis?.() || 0;
   S.chat.lastMineAt = lastMine?.createdAt?.toMillis?.() || 0;
   S.chat.byId = Object.fromEntries(msgs.map(x => [x.id, x]));
-  S.chat.mine = msgs.filter(x => x.uid === S.me.uid).map(x => ({ id: x.id, ms: x.createdAt?.toMillis?.() || Date.now() }));   // oplopend
+  // oplopend. Alleen het allernieuwste bericht van het gesprek telt na een bewerking opnieuw (editedAt): dan gaat het oogje
+  // terug naar het vorige bericht tot de lezer het aangepaste bericht weer heeft gelezen.
+  S.chat.mine = msgs.filter(x => x.uid === S.me.uid).map(x => ({ id: x.id, ms: (x.id === last?.id && x.editedAt?.toMillis?.()) || x.createdAt?.toMillis?.() || Date.now() }));
   markRead(); updateReceipt(); seenOpenDm();
   if (last && last.id !== S.chat.lastId) {
     if (S.chat.lastId && last.uid !== S.me.uid) delete S.chat.seen[last.uid];
@@ -879,7 +895,7 @@ async function editMessage(id, text) {
 }
 function quoteEl(r) {
   return h('button', { class: 'quote', type: 'button', title: 'Naar het originele bericht', onclick: () => jumpTo(r.id) },
-    h('span', { class: 'quote-ic', html: I.reply }), h('b', { text: String(r.name || 'Onbekend') }), h('span', { class: 'quote-t', text: String(r.text || '') }));
+    h('b', { text: String(r.name || 'Onbekend') }), h('span', { class: 'quote-t', text: String(r.text || '') }));
 }
 function jumpTo(id) {
   const el = document.querySelector(`#msgList .msg[data-mid="${CSS.escape(String(id))}"]`);

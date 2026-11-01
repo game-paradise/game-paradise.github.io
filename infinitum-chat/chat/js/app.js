@@ -348,6 +348,7 @@ function startListeners() {
     BADGES.length = 0;
     snap.forEach(d => BADGES.push({ id: d.id, ...d.data() }));
     syncModWatch(); syncSubsWatch(); renderPremiumBadge(); plansView?.render();
+    if (S.tab === 'settings') paintCredits();
   }, () => {});
 
   // functies per abonnement: Firestore -> features -> <id> { name, free, plus, prime, order }
@@ -438,6 +439,14 @@ function scheduleSidebar() { cancelAnimationFrame(sideRaf); sideRaf = requestAni
 function renderSidebar() {
   if (!S.me) return;
   const list = $('#sideList'), foot = $('#sideFoot');
+  if (S.tab === 'settings') {
+    $('#sideTitle').textContent = 'Instellingen';
+    if (list.dataset.mode === 'settings') return;   // niet opnieuw opbouwen: anders raak je de zoekbalk kwijt tijdens het typen
+    list.dataset.mode = 'settings';
+    buildSettingsNav(list, foot);
+    return;
+  }
+  delete list.dataset.mode;
   list.replaceChildren(); foot.replaceChildren();
 
   if (S.tab === 'servers') {
@@ -619,19 +628,33 @@ function markRead() {
 window.addEventListener('focus', () => markRead());
 document.addEventListener('visibilitychange', () => markRead());
 
+// Elke lezer krijgt zijn eigen plek: onder jouw laatste bericht dat hij/zij gelezen had (createdAt <= zijn `at`).
+// Stuur je iets nieuws, dan blijft het oogje dus staan tot die persoon het gesprek weer opent en doorleest.
+// In servers staan er meerdere oogjes onder elkaar: elk met het aantal mensen dat precies tot daar las.
 function updateReceipt() {
-  const el = $('#receipt'), c = S.chat;
-  if (!el || !c) return;
-  el.replaceChildren();
-  if (!rrOn() || !c.lastMineAt) return;
+  const c = S.chat;
+  if (!c) return;
+  document.querySelectorAll('#msgList .receipt').forEach(el => el.replaceChildren());
+  if (!rrOn() || !c.mine?.length) return;
   const allowed = new Set(c.type === 'dm' ? [dmInfo(c.id)?.uid] : (serverInfo(c.id)?.members || []));
-  const readers = Object.entries(c.reads).filter(([u, at]) => u !== S.me.uid && allowed.has(u) && at >= c.lastMineAt).map(([u]) => u);
-  if (!readers.length) return;
-  const names = readers.map(u => PROF[u]?.username).filter(Boolean).slice(0, 10).join(', ');
-  el.append(h('span', {
-    class: 'rcpt', title: names ? 'Gelezen door ' + names : 'Gelezen',
-    'aria-label': c.type === 'server' ? `Gelezen door ${readers.length}` : 'Gelezen'
-  }, h('span', { class: 'rcpt-ic', html: I.eye }), c.type === 'server' ? h('b', { text: String(readers.length) }) : null));
+  const groups = new Map();   // bericht-id -> [uid, ...]
+  for (const [u, at] of Object.entries(c.reads)) {
+    if (u === S.me.uid || !allowed.has(u) || !at) continue;
+    let hit = null;
+    for (const m of c.mine) { if (m.ms <= at) hit = m; else break; }
+    if (!hit) continue;
+    if (!groups.has(hit.id)) groups.set(hit.id, []);
+    groups.get(hit.id).push(u);
+  }
+  for (const [id, users] of groups) {
+    const el = document.querySelector(`#msgList .receipt[data-mid="${CSS.escape(id)}"]`);
+    if (!el) continue;
+    const names = users.map(u => PROF[u]?.username).filter(Boolean).slice(0, 10).join(', ');
+    el.append(h('span', {
+      class: 'rcpt', title: names ? 'Gelezen door ' + names : 'Gelezen',
+      'aria-label': c.type === 'server' ? `Gelezen door ${users.length}` : 'Gelezen'
+    }, h('span', { class: 'rcpt-ic', html: I.eye }), c.type === 'server' ? h('b', { text: String(users.length) }) : null));
+  }
 }
 
 /* =====================  typ-indicator  ===================== */
@@ -737,7 +760,7 @@ function renderMessages(msgs) {
       h('div', { class: 'msg-body' },
         !grouped && h('div', { class: 'meta' }, !mine && h('b', { text: PROF[m.uid]?.username || m.name || 'Onbekend' }), h('time', { text: tf.format(d) })),
         h('div', { class: 'bubble', text: m.text }),
-        lastMine && m.id === lastMine.id ? h('div', { class: 'receipt', id: 'receipt' }) : null)));
+        mine ? h('div', { class: 'receipt', 'data-mid': m.id }) : null)));
     prev = { uid: m.uid, d };
   }
   if (nearBottom) list.scrollTop = list.scrollHeight;
@@ -747,6 +770,7 @@ function renderMessages(msgs) {
   S.chat.newest = last ? { id: last.id, uid: last.uid } : null;
   S.chat.lastMillis = last?.createdAt?.toMillis?.() || 0;
   S.chat.lastMineAt = lastMine?.createdAt?.toMillis?.() || 0;
+  S.chat.mine = msgs.filter(x => x.uid === S.me.uid).map(x => ({ id: x.id, ms: x.createdAt?.toMillis?.() || Date.now() }));   // oplopend
   markRead(); updateReceipt(); seenOpenDm();
   if (last && last.id !== S.chat.lastId) {
     if (S.chat.lastId && last.uid !== S.me.uid) delete S.chat.seen[last.uid];
@@ -1396,32 +1420,136 @@ function renderSettings() {
       cb, h('i'));
   })();
 
-  $('#main').replaceChildren(h('div', { class: 'pane settings' },
-    h('h2', { text: 'Instellingen' }),
-    h('p', { class: 'sub', text: 'Deze instellingen worden bij je account bewaard en gelden op al je apparaten.' }),
-    h('section', { class: 'set-card' },
-      h('h3', { text: 'Weergave' }),
-      h('p', { class: 'set-lbl', text: 'Thema' }), h('div', { class: 'opts' }, themeBtns),
-      h('p', { class: 'set-lbl', text: 'Achtergrond' }), h('div', { class: 'bg-grid' }, bgBtns)),
-    h('section', { class: 'set-card' },
-      h('h3', { text: 'Profielen' }),
-      profTog),
-    h('section', { class: 'set-card' },
-      h('h3', { text: 'Privacy' }),
-      rrTog),
-    h('section', { class: 'set-card' },
-      h('h3', { text: 'Meldingen' }),
-      tog('desktop', 'Bureaubladmeldingen', 'Een melding van je browser als de site op de achtergrond staat.', askDesktop),
-      tog('dm', 'Directe berichten', 'Een melding bij een nieuw bericht van een vriend.'),
-      tog('server', 'Servers', 'Alleen voor de server die open staat terwijl de site op de achtergrond is.'),
-      tog('requests', 'Verzoeken', 'Een melding bij een vriendschapsverzoek, een abonnementsaanvraag (moderators) en als jouw aanvraag is beoordeeld.'),
-      tog('sound', 'Geluid', 'Een kort geluidje bij elke melding.'),
-      tog('preview', 'Berichttekst tonen', 'Uit = je ziet alleen dat er een bericht is, niet wat erin staat.'),
-      permNote,
-      h('button', { class: 'ghost sm', type: 'button', onclick: testNotify, text: 'Testmelding sturen' }),
-      h('p', { class: 'perm-note', text: 'Staat je status op "Niet storen", dan krijg je geen meldingen.' })),
-    h('p', { class: 'hint', text: 'Tip: klik op je profielfoto linksboven om je foto, banner, bio en links aan te passen.' })));
-  mark();
+  // elk zoekbaar blokje is een .set-item; elke categorie een .set-sec (zie filterSettings)
+  const item = (keys, wide, ...kids) => {
+    const el = h('div', { class: 'set-item' + (wide ? ' wide' : '') }, ...kids);
+    el.dataset.q = (keys + ' ' + el.textContent).toLowerCase();
+    return el;
+  };
+  const sec = (id, title, ...items) => {
+    const el = h('section', { class: 'set-card set-sec', id: 'set-' + id, 'data-sec': id }, h('h3', { text: title }), h('div', { class: 'set-items' }, ...items));
+    el.dataset.q = title.toLowerCase();
+    return el;
+  };
+  const dnd = h('div', {}, permNote,
+    h('button', { class: 'ghost sm', type: 'button', onclick: testNotify, text: 'Testmelding sturen' }),
+    h('p', { class: 'perm-note', text: 'Staat je status op "Niet storen", dan krijg je geen meldingen.' }));
+
+  const keep = document.querySelector('.pane.settings')?.scrollTop || 0;
+  const empty = h('p', { class: 'hint', id: 'setEmpty', text: 'Niets gevonden. Probeer een ander woord.' });
+  empty.hidden = true;
+  const pane = h('div', { class: 'pane settings' },
+    h('div', { class: 'set-head' },
+      h('button', { class: 'icon-btn back', type: 'button', html: I.back, 'aria-label': 'Terug', onclick: () => setView('list') }),
+      h('div', {},
+        h('h2', { text: 'Instellingen' }),
+        h('p', { class: 'sub', text: 'Deze instellingen worden bij je account bewaard en gelden op al je apparaten.' }))),
+    empty,
+    sec('weergave', 'Weergave',
+      item('thema donker licht systeem uiterlijk', true, h('p', { class: 'set-lbl', text: 'Thema' }), h('div', { class: 'opts' }, themeBtns)),
+      item('achtergrond ' + BGS.map(b => b.name).join(' '), true, h('p', { class: 'set-lbl', text: 'Achtergrond' }), h('div', { class: 'bg-grid' }, bgBtns))),
+    sec('profielen', 'Profielen',
+      item('profiel foto zijbalk', false, profTog),
+      item('profiel foto banner bio links tip', false, h('p', { class: 'hint', text: 'Tip: klik op je profielfoto linksboven om je foto, banner, bio en links aan te passen.' }))),
+    sec('privacy', 'Privacy',
+      item('privacy leesbewijzen oogje gelezen', false, rrTog)),
+    sec('meldingen', 'Meldingen',
+      item('', false, tog('desktop', 'Bureaubladmeldingen', 'Een melding van je browser als de site op de achtergrond staat.', askDesktop)),
+      item('', false, tog('dm', 'Directe berichten', 'Een melding bij een nieuw bericht van een vriend.')),
+      item('', false, tog('server', 'Servers', 'Alleen voor de server die open staat terwijl de site op de achtergrond is.')),
+      item('', false, tog('requests', 'Verzoeken', 'Een melding bij een vriendschapsverzoek, een abonnementsaanvraag (moderators) en als jouw aanvraag is beoordeeld.')),
+      item('', false, tog('sound', 'Geluid', 'Een kort geluidje bij elke melding.')),
+      item('', false, tog('preview', 'Berichttekst tonen', 'Uit = je ziet alleen dat er een bericht is, niet wat erin staat.')),
+      item('testmelding toestemming niet storen', true, dnd)),
+    sec('credits', 'Credits',
+      Object.assign(item('credits moderators admins team beheer', true,
+        h('p', { class: 'sub', text: 'Deze moderators houden Infinitum in goede banen: ze beoordelen abonnementsaanvragen en beheren de community.' }),
+        h('div', { class: 'credit-list', id: 'creditsList' })), {})));
+  $('#main').replaceChildren(pane);
+  pane.addEventListener('scroll', () => {
+    const secs = [...pane.querySelectorAll('.set-sec:not([hidden])')];
+    if (!secs.length) return;
+    const top = pane.getBoundingClientRect().top;
+    let cur = secs[0].dataset.sec;
+    for (const x of secs) if (x.getBoundingClientRect().top - top <= 70) cur = x.dataset.sec;
+    if (pane.scrollHeight - pane.scrollTop - pane.clientHeight < 4) cur = secs[secs.length - 1].dataset.sec;
+    if (cur !== SET_UI.active) { SET_UI.active = cur; markNav(); }
+  }, { passive: true });
+  pane.scrollTop = keep;
+  mark(); paintCredits(); filterSettings(); markNav();
+}
+
+/* --- instellingen: zijbalk (categorieën + zoeken + credits) --- */
+const SET_SECS = [
+  { id: 'weergave', title: 'Weergave', ic: '🎨', d: 'Thema en achtergrond' },
+  { id: 'profielen', title: 'Profielen', ic: '👤', d: 'Profielfoto in de zijbalk' },
+  { id: 'privacy', title: 'Privacy', ic: '🔒', d: 'Leesbewijzen' },
+  { id: 'meldingen', title: 'Meldingen', ic: '🔔', d: 'Geluid, bureaublad en servers' }
+];
+const SET_UI = { q: '', active: 'weergave' };
+
+function markNav() {
+  document.querySelectorAll('.set-nav, .set-credits').forEach(b => b.classList.toggle('active', b.dataset.sec === SET_UI.active));
+}
+
+// zoeken: toont alleen de blokjes die passen; een categorie waarvan de titel past blijft helemaal zichtbaar
+function filterSettings() {
+  const pane = document.querySelector('.pane.settings');
+  if (!pane) return;
+  const q = SET_UI.q.trim().toLowerCase();
+  const hit = {};
+  let any = false;
+  pane.querySelectorAll('.set-sec').forEach(x => {
+    const titleHit = !q || x.dataset.q.includes(q);
+    let shown = 0;
+    x.querySelectorAll('.set-item').forEach(it => { const ok = titleHit || it.dataset.q.includes(q); it.hidden = !ok; if (ok) shown++; });
+    x.hidden = !shown;
+    hit[x.dataset.sec] = shown > 0;
+    if (shown) any = true;
+  });
+  const em = $('#setEmpty'); if (em) em.hidden = any;
+  document.querySelectorAll('.set-nav, .set-credits').forEach(b => b.classList.toggle('dim', !hit[b.dataset.sec]));
+}
+
+function goSection(id) {
+  const pane0 = document.querySelector('.pane.settings');
+  if (!pane0) renderSettings();
+  setView('main');
+  const pane = document.querySelector('.pane.settings'), x = document.getElementById('set-' + id);
+  if (!pane || !x) return;
+  if (x.hidden) {   // zit weggefilterd door de zoekbalk: zoekopdracht wissen
+    SET_UI.q = ''; const inp = document.querySelector('.set-search'); if (inp) inp.value = '';
+    filterSettings();
+  }
+  SET_UI.active = id; markNav();
+  pane.scrollTo({ top: pane.scrollTop + x.getBoundingClientRect().top - pane.getBoundingClientRect().top - 12, behavior: 'smooth' });
+}
+
+function buildSettingsNav(list, foot) {
+  const search = h('input', { class: 'inp set-search', type: 'search', placeholder: 'Zoeken in instellingen…', autocomplete: 'off', 'aria-label': 'Zoeken in instellingen' });
+  search.value = SET_UI.q;
+  search.addEventListener('input', () => { SET_UI.q = search.value; filterSettings(); });
+  list.replaceChildren(search, ...SET_SECS.map(c => h('button', { class: 'item set-nav', type: 'button', 'data-sec': c.id, onclick: () => goSection(c.id) },
+    h('span', { class: 'set-ic', text: c.ic }),
+    h('span', { class: 'item-text' }, h('b', { text: c.title }), h('small', { text: c.d })))));
+  foot.replaceChildren(h('button', { class: 'ghost set-credits', type: 'button', 'data-sec': 'credits', text: 'Credits', onclick: () => goSection('credits') }));
+  markNav();
+}
+
+// credits: de moderators (= admins), live uit de badges
+const creditUids = () => [...new Set(BADGES.filter(b => b.id === 'moderator' || b.id === 'admin').flatMap(b => Array.isArray(b.users) ? b.users : []))];
+function paintCredits() {
+  const box = $('#creditsList');
+  if (!box || !S.me) return;
+  const ids = creditUids();
+  loadProfiles(ids.filter(u => u !== S.me.uid));
+  if (!ids.length) { box.replaceChildren(h('p', { class: 'hint', text: 'Er zijn nog geen moderators ingesteld.' })); return; }
+  box.replaceChildren(...ids.map(u => {
+    const p = u === S.me.uid ? S.profile : PROF[u];
+    const name = p?.username || '…';
+    return h('div', { class: 'credit' }, avatar(u, name, 44, true),
+      h('span', { class: 'item-text' }, h('b', { text: name }), h('small', { text: 'Moderator' })));
+  }));
 }
 
 /* --- links als knop (link-icoon + favicon + naam) --- */
@@ -1467,6 +1595,7 @@ function linkChip(l, onRemove) {
 /* --- reageren op profielwijzigingen van anderen (naam/foto) --- */
 function onProfChange(u) {
   refreshAvatars(); scheduleSidebar();
+  if (S.tab === 'settings') paintCredits();
   if (S.tab === 'friends') renderFriendList();
   if (S.chat?.type === 'dm' && dmInfo(S.chat.id)?.uid === u) {
     const old = $('#chatHead');
